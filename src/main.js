@@ -21,6 +21,8 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.12;
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -49,6 +51,11 @@ const rimLight = new THREE.DirectionalLight(0xb6dcff, 2.4);
 rimLight.position.set(-8, 6, -8);
 scene.add(rimLight);
 
+const sun = createSunAndSky();
+scene.add(sun.sky);
+scene.add(sun.disc);
+scene.add(sun.glow);
+
 const checkerTexture = makeCheckerTexture();
 checkerTexture.wrapS = THREE.RepeatWrapping;
 checkerTexture.wrapT = THREE.RepeatWrapping;
@@ -72,6 +79,9 @@ scene.add(ground);
 
 const cityRoot = new THREE.Group();
 scene.add(cityRoot);
+
+const waterRoot = new THREE.Group();
+scene.add(waterRoot);
 
 const portalRoot = new THREE.Group();
 scene.add(portalRoot);
@@ -154,6 +164,10 @@ const animatedTrees = [];
 const peaches = [];
 let pickedPeaches = 0;
 let pickupMessageTimer;
+const waterZones = [];
+const splashRings = [];
+let wasInWater = false;
+let reflectionTimer = 0;
 const peachArrow = new THREE.ArrowHelper(
   new THREE.Vector3(0, 0, -1),
   new THREE.Vector3(0, 2.25, 0),
@@ -164,6 +178,14 @@ const peachArrow = new THREE.ArrowHelper(
 );
 peachArrow.visible = false;
 scene.add(peachArrow);
+const reflectionTarget = new THREE.WebGLCubeRenderTarget(128, {
+  format: THREE.RGBAFormat,
+  generateMipmaps: true,
+  minFilter: THREE.LinearMipmapLinearFilter
+});
+const reflectionCamera = new THREE.CubeCamera(0.1, 220, reflectionTarget);
+reflectionCamera.position.set(0, 2.2, 0);
+scene.add(reflectionCamera);
 const clock = new THREE.Clock();
 
 window.addEventListener("keydown", (event) => {
@@ -248,6 +270,7 @@ const templeTextures = {
 
 city = createProceduralCity();
 cityRoot.add(city);
+createCityWater();
 buildCityColliders(city);
 loaded.city = true;
 updateReadyState();
@@ -409,9 +432,10 @@ function createProceduralCity() {
   const sidewalkMaterial = new THREE.MeshStandardMaterial({ color: 0x9da4a7, roughness: 0.78 });
   const windowMaterial = new THREE.MeshStandardMaterial({
     color: 0xaee5ff,
-    emissive: 0x27485c,
-    emissiveIntensity: 0.22,
-    roughness: 0.35
+    emissive: 0xffd29b,
+    emissiveIntensity: 1.25,
+    roughness: 0.22,
+    toneMapped: false
   });
   const buildingMaterials = [
     new THREE.MeshStandardMaterial({ color: 0x6f7d88, roughness: 0.68 }),
@@ -457,6 +481,7 @@ function createProceduralCity() {
       group.add(cap);
 
       addWindowBands(group, x, z, width, depth, height, windowMaterial);
+      if (seededNoise(x - 5, z + 9) > 0.7) addBuildingLight(group, x, z, height);
     }
   }
 
@@ -466,6 +491,12 @@ function createProceduralCity() {
   group.add(plaza);
 
   return group;
+}
+
+function addBuildingLight(group, x, z, height) {
+  const bulb = new THREE.PointLight(0xffc66f, 0.7, 7.5, 1.8);
+  bulb.position.set(x, Math.min(height + 0.7, 6.5), z);
+  group.add(bulb);
 }
 
 function addWindowBands(group, x, z, width, depth, height, material) {
@@ -480,6 +511,124 @@ function addWindowBands(group, x, z, width, depth, height, material) {
     side.position.set(x + width * 0.505, y, z);
     group.add(side);
   }
+}
+
+function createSunAndSky() {
+  const sky = new THREE.Mesh(
+    new THREE.SphereGeometry(180, 40, 24),
+    new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      depthWrite: false,
+      uniforms: {
+        topColor: { value: new THREE.Color(0x6eb5ff) },
+        bottomColor: { value: new THREE.Color(0xf8dcc0) },
+        sunColor: { value: new THREE.Color(0xfff0b8) },
+        sunDirection: { value: new THREE.Vector3(-0.42, 0.34, -0.84).normalize() }
+      },
+      vertexShader: `
+        varying vec3 vWorldDirection;
+        void main() {
+          vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+          vWorldDirection = normalize(worldPosition.xyz);
+          gl_Position = projectionMatrix * viewMatrix * worldPosition;
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 topColor;
+        uniform vec3 bottomColor;
+        uniform vec3 sunColor;
+        uniform vec3 sunDirection;
+        varying vec3 vWorldDirection;
+        void main() {
+          float horizon = smoothstep(-0.25, 0.85, vWorldDirection.y);
+          vec3 skyColor = mix(bottomColor, topColor, horizon);
+          float sunAmount = pow(max(dot(normalize(vWorldDirection), sunDirection), 0.0), 420.0);
+          float glowAmount = pow(max(dot(normalize(vWorldDirection), sunDirection), 0.0), 18.0);
+          gl_FragColor = vec4(skyColor + sunColor * sunAmount * 2.8 + sunColor * glowAmount * 0.22, 1.0);
+        }
+      `
+    })
+  );
+
+  const discMaterial = new THREE.MeshBasicMaterial({ color: 0xfff1a8, toneMapped: false });
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(6.5, 48), discMaterial);
+  disc.position.set(44, 38, -96);
+  disc.lookAt(camera.position);
+
+  const glow = new THREE.PointLight(0xffdf9a, 7.5, 120, 2.2);
+  glow.position.copy(disc.position);
+
+  return { sky, disc, glow };
+}
+
+function createCityWater() {
+  const pool = createReflectiveWater(8.4, 5.2, 0x1a8fc4);
+  pool.position.set(-5.4, 0.09, 5.2);
+  pool.rotation.x = -Math.PI / 2;
+  waterRoot.add(pool);
+  waterZones.push({ world: "city", x: -5.4, z: 5.2, radius: 4.0, mesh: pool });
+}
+
+function createReflectiveWater(width, depth, color) {
+  const geometry = new THREE.PlaneGeometry(width, depth, 96, 64);
+  const material = new THREE.MeshPhysicalMaterial({
+    color,
+    roughness: 0.018,
+    metalness: 0,
+    transmission: 0.06,
+    thickness: 0.35,
+    transparent: true,
+    opacity: 0.82,
+    envMap: reflectionTarget.texture,
+    envMapIntensity: 1.05,
+    clearcoat: 1,
+    clearcoatRoughness: 0.02
+  });
+
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = { value: 0 };
+    material.userData.shader = shader;
+    shader.vertexShader = shader.vertexShader.replace(
+      "#include <common>",
+      "#include <common>\nuniform float uTime;"
+    );
+    shader.vertexShader = shader.vertexShader.replace(
+      "#include <begin_vertex>",
+      `vec3 transformed = vec3(position);
+       float waveA = sin(position.x * 3.7 + uTime * 1.45) * 0.035;
+       float waveB = cos(position.y * 5.1 + uTime * 1.9) * 0.022;
+       transformed.z += waveA + waveB;`
+    );
+    shader.fragmentShader = shader.fragmentShader.replace(
+      "#include <color_fragment>",
+      "#include <color_fragment>\ndiffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.18, 0.62, 0.92), 0.38);"
+    );
+  };
+
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.receiveShadow = true;
+  mesh.userData.isWater = true;
+  return mesh;
+}
+
+function createIslandWater() {
+  const pool = createReflectiveWater(5.8, 3.7, 0x1daee8);
+  pool.position.set(-1.6, 0.13, 0.8);
+  pool.rotation.x = -Math.PI / 2;
+  mountainRoot.add(pool);
+  waterZones.push({ world: "mountain", x: -1.6, z: 0.8, radius: 2.65, mesh: pool });
+}
+
+function createSplash(position) {
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.28, 0.34, 36),
+    new THREE.MeshBasicMaterial({ color: 0xbdecff, transparent: true, opacity: 0.9, side: THREE.DoubleSide, toneMapped: false })
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.set(position.x, 0.16, position.z);
+  ring.userData.life = 0;
+  splashRings.push(ring);
+  scene.add(ring);
 }
 
 function seededNoise(x, z) {
@@ -621,6 +770,7 @@ function createFloatingIslandScene() {
   island.add(path);
 
   mountainRoot.add(island);
+  createIslandWater();
   createAnimatedTrees();
   createPeaches();
   mountainColliders.length = 0;
@@ -849,6 +999,7 @@ function animate() {
   const delta = clock.getDelta();
   const isMoving = updateMovement(delta);
   updateJump(delta);
+  updateWater(delta);
   updateIslandAnimations(delta);
 
   if (mixer) mixer.update(delta);
@@ -862,6 +1013,7 @@ function animate() {
   updatePeachGuideArrow();
   updateCamera(delta);
   controls.update();
+  updateReflections(delta);
   renderer.render(scene, camera);
 }
 
@@ -902,6 +1054,65 @@ function updateMovement(delta) {
   deltaAngle = Math.atan2(Math.sin(deltaAngle), Math.cos(deltaAngle));
   track.rotation.y += deltaAngle * Math.min(1, delta * 12);
   return true;
+}
+
+function updateWater(delta) {
+  const time = clock.elapsedTime;
+  waterZones.forEach((zone) => {
+    const shader = zone.mesh.material.userData.shader;
+    if (shader) shader.uniforms.uTime.value = time;
+    zone.mesh.material.envMapIntensity = activeWorld === zone.world ? 1.15 : 0.75;
+  });
+
+  const currentZone = waterZones.find((zone) => {
+    if (zone.world !== activeWorld) return false;
+    const dx = track.position.x - zone.x;
+    const dz = track.position.z - zone.z;
+    return dx * dx + dz * dz < zone.radius * zone.radius;
+  });
+
+  if (currentZone && !wasInWater) {
+    createSplash(track.position);
+    statusEl.textContent = jumpOffset > 0.05 ? "Splash" : "Water";
+    statusEl.dataset.ready = "false";
+    window.clearTimeout(pickupMessageTimer);
+    pickupMessageTimer = window.setTimeout(() => {
+      statusEl.dataset.ready = "true";
+    }, 1000);
+  }
+  wasInWater = Boolean(currentZone);
+
+  for (let i = splashRings.length - 1; i >= 0; i -= 1) {
+    const ring = splashRings[i];
+    ring.userData.life += delta;
+    const age = ring.userData.life;
+    ring.scale.setScalar(1 + age * 3.8);
+    ring.material.opacity = Math.max(0, 0.9 - age * 1.35);
+    if (ring.material.opacity <= 0) {
+      scene.remove(ring);
+      ring.geometry.dispose();
+      ring.material.dispose();
+      splashRings.splice(i, 1);
+    }
+  }
+}
+
+function updateReflections(delta) {
+  reflectionTimer += delta;
+  if (reflectionTimer < 0.22) return;
+  reflectionTimer = 0;
+
+  const visibleWater = waterZones.find((zone) => zone.world === activeWorld);
+  if (!visibleWater) return;
+
+  reflectionCamera.position.set(track.position.x, Math.max(1.4, track.position.y + 1.8), track.position.z);
+  waterZones.forEach((zone) => {
+    zone.mesh.visible = false;
+  });
+  reflectionCamera.update(renderer, scene);
+  waterZones.forEach((zone) => {
+    zone.mesh.visible = zone.world === activeWorld;
+  });
 }
 
 function getRunMultiplier() {
@@ -1038,6 +1249,7 @@ function enterMountainScene() {
   cityRoot.visible = false;
   portalRoot.visible = false;
   mountainRoot.visible = true;
+  waterRoot.visible = false;
   ground.visible = false;
 
   scene.background.copy(worldSettings.mountain.background);
