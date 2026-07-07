@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>walk-beta</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.166.1/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.166.1/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <main id="stage" aria-label="walk-beta">
+      <canvas id="scene"></canvas>
+      <p id="status" role="status">Loading model...</p>
+      <section id="loading-screen" aria-live="polite" aria-label="Loading world">
+        <div class="loading-panel">
+          <p>Loading</p>
+          <div class="progress-track" aria-hidden="true">
+            <span id="loading-progress"></span>
+          </div>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
