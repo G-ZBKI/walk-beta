@@ -24,6 +24,72 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.12;
 
+const postScene = new THREE.Scene();
+const postCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const sceneTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
+  depthBuffer: true,
+  stencilBuffer: false
+});
+const historyTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
+  depthBuffer: false,
+  stencilBuffer: false
+});
+const copyScene = new THREE.Scene();
+const copyMaterial = new THREE.MeshBasicMaterial({ map: sceneTarget.texture });
+copyScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), copyMaterial));
+const postMaterial = new THREE.ShaderMaterial({
+  uniforms: {
+    currentFrame: { value: sceneTarget.texture },
+    historyFrame: { value: historyTarget.texture },
+    resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+    focusDistance: { value: 0.38 },
+    blurStrength: { value: 0.42 },
+    motionStrength: { value: 0.28 }
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = vec4(position.xy, 0.0, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D currentFrame;
+    uniform sampler2D historyFrame;
+    uniform vec2 resolution;
+    uniform float focusDistance;
+    uniform float blurStrength;
+    uniform float motionStrength;
+    varying vec2 vUv;
+
+    vec3 sampleBlur(vec2 uv, float radius) {
+      vec2 texel = 1.0 / resolution;
+      vec3 color = texture2D(currentFrame, uv).rgb * 0.28;
+      color += texture2D(currentFrame, uv + texel * vec2(radius, 0.0)).rgb * 0.12;
+      color += texture2D(currentFrame, uv - texel * vec2(radius, 0.0)).rgb * 0.12;
+      color += texture2D(currentFrame, uv + texel * vec2(0.0, radius)).rgb * 0.12;
+      color += texture2D(currentFrame, uv - texel * vec2(0.0, radius)).rgb * 0.12;
+      color += texture2D(currentFrame, uv + texel * vec2(radius, radius)).rgb * 0.06;
+      color += texture2D(currentFrame, uv + texel * vec2(-radius, radius)).rgb * 0.06;
+      color += texture2D(currentFrame, uv + texel * vec2(radius, -radius)).rgb * 0.06;
+      color += texture2D(currentFrame, uv + texel * vec2(-radius, -radius)).rgb * 0.06;
+      return color;
+    }
+
+    void main() {
+      vec3 current = texture2D(currentFrame, vUv).rgb;
+      vec3 history = texture2D(historyFrame, vUv).rgb;
+      float focusMask = smoothstep(0.08, 0.58, abs(vUv.y - focusDistance));
+      vec3 dof = sampleBlur(vUv, mix(0.8, 3.8, focusMask * blurStrength));
+      vec3 motion = mix(current, history, motionStrength);
+      vec3 color = mix(current, dof, focusMask * blurStrength);
+      color = mix(color, motion, motionStrength * 0.42);
+      gl_FragColor = vec4(color, 1.0);
+    }
+  `
+});
+postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), postMaterial));
+
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.enableRotate = false;
@@ -168,6 +234,8 @@ const waterZones = [];
 const splashRings = [];
 let wasInWater = false;
 let reflectionTimer = 0;
+let hasHistoryFrame = false;
+let isInWater = false;
 const peachArrow = new THREE.ArrowHelper(
   new THREE.Vector3(0, 0, -1),
   new THREE.Vector3(0, 2.25, 0),
@@ -562,27 +630,67 @@ function createSunAndSky() {
 }
 
 function createCityWater() {
-  const pool = createReflectiveWater(8.4, 5.2, 0x1a8fc4);
-  pool.position.set(-5.4, 0.09, 5.2);
-  pool.rotation.x = -Math.PI / 2;
-  waterRoot.add(pool);
-  waterZones.push({ world: "city", x: -5.4, z: 5.2, radius: 4.0, mesh: pool });
+  const pool = createWaterBody(8.4, 5.2, 0x1a8fc4);
+  pool.group.position.set(-5.4, 0, 5.2);
+  waterRoot.add(pool.group);
+  waterZones.push({ world: "city", x: -5.4, z: 5.2, radius: 4.0, mesh: pool.surface, group: pool.group });
+}
+
+function createWaterBody(width, depth, color) {
+  const group = new THREE.Group();
+  const basin = new THREE.Mesh(
+    new THREE.CylinderGeometry(Math.max(width, depth) * 0.52, Math.max(width, depth) * 0.42, 0.75, 64),
+    new THREE.MeshStandardMaterial({
+      color: 0x06324d,
+      roughness: 0.88,
+      metalness: 0,
+      transparent: true,
+      opacity: 0.92
+    })
+  );
+  basin.scale.z = depth / width;
+  basin.position.y = -0.32;
+  basin.receiveShadow = true;
+  group.add(basin);
+
+  const rim = new THREE.Mesh(
+    new THREE.TorusGeometry(Math.max(width, depth) * 0.49, 0.09, 10, 96),
+    new THREE.MeshStandardMaterial({
+      color: 0xc1e8ff,
+      roughness: 0.2,
+      metalness: 0.05,
+      emissive: 0x1e6f91,
+      emissiveIntensity: 0.18
+    })
+  );
+  rim.scale.z = depth / width;
+  rim.rotation.x = Math.PI * 0.5;
+  rim.position.y = 0.11;
+  group.add(rim);
+
+  const surface = createReflectiveWater(width, depth, color);
+  surface.position.y = 0.12;
+  surface.rotation.x = -Math.PI / 2;
+  group.add(surface);
+
+  return { group, surface };
 }
 
 function createReflectiveWater(width, depth, color) {
   const geometry = new THREE.PlaneGeometry(width, depth, 96, 64);
   const material = new THREE.MeshPhysicalMaterial({
     color,
-    roughness: 0.018,
+    roughness: 0.012,
     metalness: 0,
-    transmission: 0.06,
-    thickness: 0.35,
+    transmission: 0.18,
+    thickness: 1.15,
     transparent: true,
-    opacity: 0.82,
+    opacity: 0.76,
     envMap: reflectionTarget.texture,
-    envMapIntensity: 1.05,
+    envMapIntensity: 1.35,
     clearcoat: 1,
-    clearcoatRoughness: 0.02
+    clearcoatRoughness: 0.015,
+    ior: 1.333
   });
 
   material.onBeforeCompile = (shader) => {
@@ -601,7 +709,12 @@ function createReflectiveWater(width, depth, color) {
     );
     shader.fragmentShader = shader.fragmentShader.replace(
       "#include <color_fragment>",
-      "#include <color_fragment>\ndiffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.18, 0.62, 0.92), 0.38);"
+      `#include <color_fragment>
+       float depthGradient = smoothstep(0.12, 0.88, length(vUv - 0.5) * 1.65);
+       vec3 shallowWater = vec3(0.22, 0.76, 0.96);
+       vec3 deepWater = vec3(0.01, 0.16, 0.34);
+       diffuseColor.rgb = mix(deepWater, shallowWater, depthGradient);
+       diffuseColor.rgb += vec3(0.08, 0.18, 0.22) * (1.0 - depthGradient);`
     );
   };
 
@@ -612,11 +725,10 @@ function createReflectiveWater(width, depth, color) {
 }
 
 function createIslandWater() {
-  const pool = createReflectiveWater(5.8, 3.7, 0x1daee8);
-  pool.position.set(-1.6, 0.13, 0.8);
-  pool.rotation.x = -Math.PI / 2;
-  mountainRoot.add(pool);
-  waterZones.push({ world: "mountain", x: -1.6, z: 0.8, radius: 2.65, mesh: pool });
+  const pool = createWaterBody(5.8, 3.7, 0x1daee8);
+  pool.group.position.set(-1.6, 0.01, 0.8);
+  mountainRoot.add(pool.group);
+  waterZones.push({ world: "mountain", x: -1.6, z: 0.8, radius: 2.65, mesh: pool.surface, group: pool.group });
 }
 
 function createSplash(position) {
@@ -1014,7 +1126,7 @@ function animate() {
   updateCamera(delta);
   controls.update();
   updateReflections(delta);
-  renderer.render(scene, camera);
+  renderWithRealismPass(delta, isMoving);
 }
 
 function updateMovement(delta) {
@@ -1047,7 +1159,8 @@ function updateMovement(delta) {
   if (moveDirection.lengthSq() < 0.001) return false;
 
   moveDirection.normalize();
-  movePlayer(moveDirection, delta * (1.7 + strideSpeed * 1.5) * getRunMultiplier());
+  const waterDrag = isInWater ? 0.68 : 1;
+  movePlayer(moveDirection, delta * (1.7 + strideSpeed * 1.5) * getRunMultiplier() * waterDrag);
 
   const facing = Math.atan2(-moveDirection.z, moveDirection.x);
   let deltaAngle = facing - track.rotation.y;
@@ -1071,6 +1184,8 @@ function updateWater(delta) {
     return dx * dx + dz * dz < zone.radius * zone.radius;
   });
 
+  isInWater = Boolean(currentZone);
+
   if (currentZone && !wasInWater) {
     createSplash(track.position);
     statusEl.textContent = jumpOffset > 0.05 ? "Splash" : "Water";
@@ -1080,7 +1195,7 @@ function updateWater(delta) {
       statusEl.dataset.ready = "true";
     }, 1000);
   }
-  wasInWater = Boolean(currentZone);
+  wasInWater = isInWater;
 
   for (let i = splashRings.length - 1; i >= 0; i -= 1) {
     const ring = splashRings[i];
@@ -1113,6 +1228,32 @@ function updateReflections(delta) {
   waterZones.forEach((zone) => {
     zone.mesh.visible = zone.world === activeWorld;
   });
+}
+
+function renderWithRealismPass(delta, isMoving) {
+  const cameraSpeed = desiredCameraPosition.distanceTo(camera.position) / Math.max(delta, 0.001);
+  postMaterial.uniforms.motionStrength.value = THREE.MathUtils.clamp((isMoving ? 0.18 : 0.08) + cameraSpeed * 0.012, 0.08, 0.34);
+  postMaterial.uniforms.blurStrength.value = THREE.MathUtils.clamp(isMoving ? 0.46 : 0.34, 0.18, 0.55);
+  postMaterial.uniforms.focusDistance.value = activeWorld === "mountain" ? 0.43 : 0.39;
+
+  renderer.setRenderTarget(sceneTarget);
+  renderer.render(scene, camera);
+  renderer.setRenderTarget(null);
+
+  if (!hasHistoryFrame) {
+    copyMaterial.map = sceneTarget.texture;
+    renderer.setRenderTarget(historyTarget);
+    renderer.render(copyScene, postCamera);
+    renderer.setRenderTarget(null);
+    hasHistoryFrame = true;
+  }
+
+  renderer.render(postScene, postCamera);
+
+  copyMaterial.map = sceneTarget.texture;
+  renderer.setRenderTarget(historyTarget);
+  renderer.render(copyScene, postCamera);
+  renderer.setRenderTarget(null);
 }
 
 function getRunMultiplier() {
@@ -1392,4 +1533,8 @@ window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  sceneTarget.setSize(window.innerWidth, window.innerHeight);
+  historyTarget.setSize(window.innerWidth, window.innerHeight);
+  postMaterial.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+  hasHistoryFrame = false;
 });
