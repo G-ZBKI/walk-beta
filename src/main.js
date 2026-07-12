@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
 
 const canvas = document.querySelector("#scene");
@@ -125,11 +126,11 @@ scene.add(sun.glow);
 const checkerTexture = makeCheckerTexture();
 checkerTexture.wrapS = THREE.RepeatWrapping;
 checkerTexture.wrapT = THREE.RepeatWrapping;
-checkerTexture.repeat.set(16, 16);
+checkerTexture.repeat.set(42, 42);
 checkerTexture.colorSpace = THREE.SRGBColorSpace;
 
 const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(54, 54),
+  new THREE.PlaneGeometry(168, 168),
   new THREE.MeshStandardMaterial({
     map: checkerTexture,
     roughness: 0.78,
@@ -141,9 +142,11 @@ const ground = new THREE.Mesh(
 ground.rotation.x = -Math.PI / 2;
 ground.position.y = 0.015;
 ground.receiveShadow = true;
+ground.visible = false;
 scene.add(ground);
 
 const cityRoot = new THREE.Group();
+cityRoot.visible = false;
 scene.add(cityRoot);
 
 const waterRoot = new THREE.Group();
@@ -153,7 +156,6 @@ const portalRoot = new THREE.Group();
 scene.add(portalRoot);
 
 const mountainRoot = new THREE.Group();
-mountainRoot.visible = false;
 scene.add(mountainRoot);
 
 const track = new THREE.Group();
@@ -164,11 +166,12 @@ let man;
 let walkAction;
 let city;
 let portalMixer;
+let courtyard;
 const strideSpeed = 0.48;
 const walkCycleSpeed = 0.9;
 const runMultiplier = 1.75;
-const loaded = { city: false, man: false, portal: false, mountain: false };
-let activeWorld = "city";
+const loaded = { city: false, man: false, portal: false, mountain: false, cars: false };
+let activeWorld = "courtyard";
 let isWorldTransitioning = false;
 const keys = new Set();
 let verticalVelocity = 0;
@@ -202,22 +205,24 @@ const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const raycaster = new THREE.Raycaster();
 const worldSettings = {
   city: {
-    boundsRadius: 22,
+    boundsRadius: 76,
     background: new THREE.Color(0x22303c),
-    fog: new THREE.Fog(0x22303c, 55, 185)
+    fog: new THREE.Fog(0x22303c, 90, 260)
   },
-  mountain: {
+  courtyard: {
     boundsRadius: 15.5,
-    background: new THREE.Color(0xbfdff1),
-    fog: new THREE.Fog(0xbfdff1, 35, 130)
+    background: new THREE.Color(0xd8e8f2),
+    fog: new THREE.Fog(0xd8e8f2, 38, 145)
   }
 };
+scene.background.copy(worldSettings.courtyard.background);
+scene.fog = worldSettings.courtyard.fog;
 const playerCollider = { radius: 0.3, height: 1.28 };
 const cityColliders = [];
 const mountainColliders = [];
-let activeColliders = cityColliders;
+let activeColliders = mountainColliders;
 const portalTrigger = {
-  position: new THREE.Vector3(3.45, 0, -5.4),
+  position: new THREE.Vector3(4.8, 0, -6.2),
   radius: 2.2
 };
 const mouseControl = {
@@ -236,6 +241,10 @@ let wasInWater = false;
 let reflectionTimer = 0;
 let hasHistoryFrame = false;
 let isInWater = false;
+const cars = [];
+let activeCar = null;
+let nearestCar = null;
+let carHintTimer;
 const peachArrow = new THREE.ArrowHelper(
   new THREE.Vector3(0, 0, -1),
   new THREE.Vector3(0, 2.25, 0),
@@ -258,6 +267,11 @@ const clock = new THREE.Clock();
 
 window.addEventListener("keydown", (event) => {
   const key = event.key.toLowerCase();
+  if (key === "f") {
+    event.preventDefault();
+    toggleCarMode();
+    return;
+  }
   if (["w", "a", "d", "arrowup", "arrowleft", "arrowright", " ", "shift"].includes(key)) {
     event.preventDefault();
     if (key === " " && jumpOffset <= 0.001) {
@@ -309,6 +323,7 @@ manager.setURLModifier((url) => {
 });
 
 const loader = new FBXLoader(manager);
+const gltfLoader = new GLTFLoader(createAssetManager("./assets/courtyard/textures/"));
 const objLoader = new OBJLoader(manager);
 const textureLoader = new THREE.TextureLoader(manager);
 const portalEmissionTexture = loadTexture("./assets/textures/T_PortalInside_Emission.png");
@@ -338,10 +353,12 @@ const templeTextures = {
 
 city = createProceduralCity();
 cityRoot.add(city);
-createCityWater();
 buildCityColliders(city);
 loaded.city = true;
 updateReadyState();
+
+loadCourtyard();
+loadCars();
 
 loader.load(
   "./assets/source/Portal.fbx",
@@ -369,21 +386,7 @@ loader.load(
   }
 );
 
-createFloatingIslandScene();
-
-objLoader.load(
-  "./assets/island/cloud.obj",
-  (object) => {
-    prepareClouds(object);
-    islandAssets.cloud = true;
-    updateIslandReadyState();
-  },
-  undefined,
-  (error) => {
-    console.error(error);
-    statusEl.textContent = "Could not load clouds";
-  }
-);
+// The courtyard model replaces the previous peach/island world.
 
 loader.load(
   "./assets/source/Mr_Man_Walking.fbx",
@@ -415,7 +418,7 @@ loader.load(
 );
 
 function updateReadyState() {
-  if (!loaded.man || !loaded.city || !loaded.portal || !loaded.mountain) return;
+  if (!loaded.man || !loaded.city || !loaded.portal || !loaded.mountain || !loaded.cars) return;
   statusEl.textContent = "Ready";
   statusEl.dataset.ready = "true";
 }
@@ -424,6 +427,108 @@ function updateIslandReadyState() {
   if (!islandAssets.island || !islandAssets.cloud) return;
   loaded.mountain = true;
   updateReadyState();
+}
+
+function createAssetManager(textureBasePath) {
+  const assetManager = new THREE.LoadingManager();
+  assetManager.setURLModifier((url) => {
+    if (url.startsWith("./assets/") || url.startsWith("assets/") || url.startsWith("blob:") || url.startsWith("data:")) {
+      return url;
+    }
+    const fileName = url.split(/[\\/]/).pop();
+    if (fileName && /\.(png|jpe?g|webp|gif)$/i.test(fileName)) {
+      return `${textureBasePath}${fileName}`;
+    }
+    return url;
+  });
+  return assetManager;
+}
+
+function loadCourtyard() {
+  gltfLoader.load(
+    "./assets/courtyard/source/四合院final2 2024_10_14.glb",
+    (gltf) => {
+      courtyard = gltf.scene;
+      prepareCourtyard(courtyard);
+      mountainRoot.add(courtyard);
+      loaded.mountain = true;
+      updateReadyState();
+    },
+    undefined,
+    (error) => {
+      console.error(error);
+      statusEl.textContent = "Could not load courtyard";
+    }
+  );
+}
+
+function loadCars() {
+  const carSpecs = [
+    {
+      id: "aston",
+      name: "Aston Martin Valkyrie",
+      url: "./assets/cars/aston/source/Aston Martin Valkyrie.fbx",
+      textures: "./assets/cars/aston/textures/",
+      position: new THREE.Vector3(-10, 0, 10),
+      rotation: Math.PI * 0.15,
+      length: 4.7,
+      color: 0x1f3247,
+      scale: 1,
+      doorSplit: 2.86
+    },
+    {
+      id: "tesla",
+      name: "Tesla Model 3",
+      url: "./assets/cars/tesla/source/tesla_car1.fbx",
+      textures: "./assets/cars/tesla/textures/",
+      position: new THREE.Vector3(11, 0, 14),
+      rotation: -Math.PI * 0.55,
+      length: 4.5,
+      color: 0xbfd4e8,
+      scale: 1
+    },
+    {
+      id: "vw",
+      name: "Volkswagen Golf GTI",
+      url: "./assets/cars/vw/FINAL_MODEL_16.fbx",
+      textures: "./assets/cars/vw/",
+      position: new THREE.Vector3(3, 0, -16),
+      rotation: Math.PI * 0.95,
+      length: 4.3,
+      color: 0xc83a32,
+      scale: 1
+    }
+  ];
+
+  let remaining = carSpecs.length;
+  carSpecs.forEach((spec) => {
+    const carLoader = new FBXLoader(createAssetManager(spec.textures));
+    carLoader.load(
+      spec.url,
+      (object) => {
+        const car = prepareCar(object, spec);
+        cityRoot.add(car.root);
+        cars.push(car);
+        remaining -= 1;
+        if (remaining === 0) {
+          loaded.cars = true;
+          updateReadyState();
+        }
+      },
+      undefined,
+      (error) => {
+        console.error(error);
+        const fallback = createFallbackCar(spec);
+        cityRoot.add(fallback.root);
+        cars.push(fallback);
+        remaining -= 1;
+        if (remaining === 0) {
+          loaded.cars = true;
+          updateReadyState();
+        }
+      }
+    );
+  });
 }
 
 function normalizeModel(object) {
@@ -458,6 +563,165 @@ function normalizeModel(object) {
   object.position.z -= scaledCenter.z;
   object.position.y -= scaledBox.min.y;
   object.rotation.y = Math.PI * 0.5;
+}
+
+function prepareCourtyard(object) {
+  object.traverse((child) => {
+    if (child.isMesh) {
+      child.castShadow = true;
+      child.receiveShadow = true;
+      if (child.material) {
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        materials.forEach((material) => {
+          material.roughness = Math.max(material.roughness ?? 0.68, 0.64);
+          material.side = THREE.DoubleSide;
+          material.needsUpdate = true;
+        });
+      }
+    }
+  });
+
+  fitObjectToScene(object, 24);
+  object.rotation.y = Math.PI * 0.08;
+}
+
+function fitObjectToScene(object, targetWidth) {
+  const box = new THREE.Box3().setFromObject(object);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const widestSide = Math.max(size.x, size.z, 0.001);
+  object.scale.multiplyScalar(targetWidth / widestSide);
+
+  const scaledBox = new THREE.Box3().setFromObject(object);
+  const scaledCenter = new THREE.Vector3();
+  scaledBox.getCenter(scaledCenter);
+  object.position.x -= scaledCenter.x;
+  object.position.z -= scaledCenter.z;
+  object.position.y -= scaledBox.min.y;
+}
+
+function prepareCar(object, spec) {
+  const root = new THREE.Group();
+  root.name = spec.name;
+  root.add(object);
+
+  object.traverse((child) => {
+    if (child.isMesh) {
+      child.castShadow = true;
+      child.receiveShadow = true;
+      if (child.material) {
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        materials.forEach((material) => {
+          material.side = THREE.DoubleSide;
+          material.roughness = Math.min(material.roughness ?? 0.45, 0.58);
+          if ((material.name || "").toLowerCase().includes("lamp")) {
+            material.emissive = new THREE.Color(0xd7f4ff);
+            material.emissiveIntensity = 0.8;
+          }
+          material.needsUpdate = true;
+        });
+      }
+    }
+  });
+
+  fitCarObject(object, spec.length);
+  root.position.copy(spec.position);
+  root.rotation.y = spec.rotation;
+
+  const car = {
+    id: spec.id,
+    name: spec.name,
+    root,
+    model: object,
+    speed: 0,
+    maxSpeed: spec.id === "aston" ? 12 : 9,
+    acceleration: spec.id === "aston" ? 13 : 10,
+    turnSpeed: spec.id === "aston" ? 1.95 : 1.65,
+    doorMixer: null,
+    doorOpenAction: null,
+    doorCloseAction: null
+  };
+
+  if (spec.doorSplit && object.animations.length > 0) {
+    car.doorMixer = new THREE.AnimationMixer(object);
+    const clip = object.animations[0];
+    const fps = 30;
+    const splitFrame = Math.floor(spec.doorSplit * fps);
+    const endFrame = Math.floor(clip.duration * fps);
+    car.doorCloseAction = car.doorMixer.clipAction(THREE.AnimationUtils.subclip(clip, "doors close", 0, splitFrame, fps));
+    car.doorOpenAction = car.doorMixer.clipAction(THREE.AnimationUtils.subclip(clip, "doors open", splitFrame, endFrame, fps));
+    car.doorCloseAction.setLoop(THREE.LoopOnce, 1);
+    car.doorOpenAction.setLoop(THREE.LoopOnce, 1);
+    car.doorCloseAction.clampWhenFinished = true;
+    car.doorOpenAction.clampWhenFinished = true;
+  }
+
+  addCarLights(root, spec);
+  return car;
+}
+
+function fitCarObject(object, targetLength) {
+  const box = new THREE.Box3().setFromObject(object);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const longest = Math.max(size.x, size.z, 0.001);
+  object.scale.multiplyScalar(targetLength / longest);
+
+  const scaledBox = new THREE.Box3().setFromObject(object);
+  const scaledCenter = new THREE.Vector3();
+  scaledBox.getCenter(scaledCenter);
+  object.position.x -= scaledCenter.x;
+  object.position.z -= scaledCenter.z;
+  object.position.y -= scaledBox.min.y;
+}
+
+function createFallbackCar(spec) {
+  const root = new THREE.Group();
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(spec.length, 0.78, spec.length * 0.46),
+    new THREE.MeshStandardMaterial({ color: spec.color, metalness: 0.25, roughness: 0.28 })
+  );
+  body.position.y = 0.55;
+  body.castShadow = true;
+  root.add(body);
+
+  const cabin = new THREE.Mesh(
+    new THREE.BoxGeometry(spec.length * 0.48, 0.55, spec.length * 0.34),
+    new THREE.MeshStandardMaterial({ color: 0x1d2a33, metalness: 0.1, roughness: 0.12 })
+  );
+  cabin.position.set(0.1, 1.05, 0);
+  cabin.castShadow = true;
+  root.add(cabin);
+
+  for (const x of [-1, 1]) {
+    for (const z of [-1, 1]) {
+      const wheel = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.34, 0.34, 0.22, 20),
+        new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.55 })
+      );
+      wheel.rotation.z = Math.PI * 0.5;
+      wheel.position.set(x * spec.length * 0.32, 0.32, z * spec.length * 0.27);
+      wheel.castShadow = true;
+      root.add(wheel);
+    }
+  }
+
+  root.position.copy(spec.position);
+  root.rotation.y = spec.rotation;
+  addCarLights(root, spec);
+  return { id: spec.id, name: spec.name, root, model: root, speed: 0, maxSpeed: 8, acceleration: 9, turnSpeed: 1.55 };
+}
+
+function addCarLights(root, spec) {
+  const headlight = new THREE.SpotLight(0xdff7ff, 1.7, 20, Math.PI * 0.18, 0.5, 1.2);
+  headlight.position.set(spec.length * 0.5, 0.72, 0);
+  headlight.target.position.set(spec.length * 1.7, 0.35, 0);
+  root.add(headlight);
+  root.add(headlight.target);
+
+  const tail = new THREE.PointLight(0xff2b1c, 0.9, 5, 1.8);
+  tail.position.set(-spec.length * 0.48, 0.55, 0);
+  root.add(tail);
 }
 
 function prepareCity(object) {
@@ -512,22 +776,22 @@ function createProceduralCity() {
     new THREE.MeshStandardMaterial({ color: 0x918474, roughness: 0.7 })
   ];
 
-  for (let i = -2; i <= 2; i += 1) {
-    const street = new THREE.Mesh(new THREE.BoxGeometry(54, 0.06, 3.2), roadMaterial);
+  for (let i = -7; i <= 7; i += 1) {
+    const street = new THREE.Mesh(new THREE.BoxGeometry(162, 0.06, 4.2), roadMaterial);
     street.position.set(0, 0.04, i * 9);
     street.receiveShadow = true;
     group.add(street);
 
-    const crossStreet = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.06, 54), roadMaterial);
+    const crossStreet = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.06, 162), roadMaterial);
     crossStreet.position.set(i * 9, 0.045, 0);
     crossStreet.receiveShadow = true;
     group.add(crossStreet);
   }
 
-  for (let x = -22; x <= 22; x += 6.5) {
-    for (let z = -22; z <= 22; z += 6.5) {
+  for (let x = -72; x <= 72; x += 6.5) {
+    for (let z = -72; z <= 72; z += 6.5) {
       const nearStart = Math.hypot(x, z) < 5.8;
-      const nearPortal = Math.hypot(x - portalTrigger.position.x, z - portalTrigger.position.z) < 5.6;
+      const nearPortal = Math.hypot(x, z) < 7.5;
       const onRoad = Math.abs(x % 9) < 2.6 || Math.abs(z % 9) < 2.6;
       if (nearStart || nearPortal || onRoad) continue;
 
@@ -1116,13 +1380,17 @@ function animate() {
 
   if (mixer) mixer.update(delta);
   if (portalMixer && portalRoot.visible) portalMixer.update(delta);
+  cars.forEach((car) => {
+    if (car.doorMixer) car.doorMixer.update(delta);
+  });
   if (walkAction) {
-    walkAction.timeScale = isMoving ? walkCycleSpeed * getRunMultiplier() : 0;
+    walkAction.timeScale = isMoving && !activeCar ? walkCycleSpeed * getRunMultiplier() : 0;
   }
 
   checkPortalEntry();
   checkPeachPickups();
   updatePeachGuideArrow();
+  updateCarHint();
   updateCamera(delta);
   controls.update();
   updateReflections(delta);
@@ -1131,6 +1399,7 @@ function animate() {
 
 function updateMovement(delta) {
   if (!man || isWorldTransitioning) return false;
+  if (activeCar) return updateVehicleMovement(delta);
 
   moveDirection.set(0, 0, 0);
 
@@ -1167,6 +1436,116 @@ function updateMovement(delta) {
   deltaAngle = Math.atan2(Math.sin(deltaAngle), Math.cos(deltaAngle));
   track.rotation.y += deltaAngle * Math.min(1, delta * 12);
   return true;
+}
+
+function updateVehicleMovement(delta) {
+  const forwardPressed = keys.has("w") || keys.has("arrowup");
+  const turningLeft = keys.has("a") || keys.has("arrowleft");
+  const turningRight = keys.has("d") || keys.has("arrowright");
+  const speedLimit = activeCar.maxSpeed * getRunMultiplier();
+
+  if (forwardPressed) {
+    activeCar.speed = Math.min(speedLimit, activeCar.speed + activeCar.acceleration * delta);
+  } else {
+    activeCar.speed *= Math.max(0, 1 - delta * 2.6);
+  }
+
+  const steering = (turningLeft ? 1 : 0) - (turningRight ? 1 : 0);
+  if (Math.abs(activeCar.speed) > 0.05 && steering !== 0) {
+    activeCar.root.rotation.y += steering * activeCar.turnSpeed * delta * THREE.MathUtils.clamp(activeCar.speed / activeCar.maxSpeed, 0.25, 1);
+  }
+
+  movementForward.set(Math.cos(activeCar.root.rotation.y), 0, -Math.sin(activeCar.root.rotation.y)).normalize();
+  candidatePosition.copy(activeCar.root.position).addScaledVector(movementForward, activeCar.speed * delta);
+
+  if (canStandAt(candidatePosition)) {
+    activeCar.root.position.copy(candidatePosition);
+  } else {
+    activeCar.speed = 0;
+  }
+
+  const boundsRadius = worldSettings.city.boundsRadius;
+  const distanceFromCenter = Math.hypot(activeCar.root.position.x, activeCar.root.position.z);
+  if (distanceFromCenter > boundsRadius) {
+    activeCar.root.position.x *= boundsRadius / distanceFromCenter;
+    activeCar.root.position.z *= boundsRadius / distanceFromCenter;
+    activeCar.speed *= 0.25;
+  }
+
+  track.position.copy(activeCar.root.position);
+  track.rotation.y = activeCar.root.rotation.y;
+  return activeCar.speed > 0.15 || steering !== 0;
+}
+
+function updateCarHint() {
+  nearestCar = null;
+  if (activeWorld !== "city" || activeCar || isWorldTransitioning) return;
+
+  let bestDistance = Infinity;
+  cars.forEach((car) => {
+    const distance = car.root.position.distanceTo(track.position);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      nearestCar = car;
+    }
+  });
+
+  if (nearestCar && bestDistance < 3.2) {
+    statusEl.textContent = `Press F to drive ${nearestCar.name}`;
+    statusEl.dataset.ready = "false";
+    window.clearTimeout(carHintTimer);
+    carHintTimer = window.setTimeout(() => {
+      if (!activeCar) statusEl.dataset.ready = "true";
+    }, 500);
+  }
+}
+
+function toggleCarMode() {
+  if (isWorldTransitioning || activeWorld !== "city") return;
+  if (activeCar) {
+    exitCar();
+    return;
+  }
+  updateCarHint();
+  if (!nearestCar) return;
+  enterCar(nearestCar);
+}
+
+function enterCar(car) {
+  activeCar = car;
+  activeCar.speed = 0;
+  keys.clear();
+  mouseControl.active = false;
+  mouseControl.pointerDown = false;
+  if (man) man.visible = false;
+  playDoorAnimation(activeCar, "open");
+  track.position.copy(activeCar.root.position);
+  track.rotation.y = activeCar.root.rotation.y;
+  statusEl.textContent = `Driving ${activeCar.name}`;
+  statusEl.dataset.ready = "false";
+}
+
+function exitCar() {
+  const car = activeCar;
+  activeCar = null;
+  keys.clear();
+  playDoorAnimation(car, "close");
+  movementForward.set(Math.cos(car.root.rotation.y + Math.PI * 0.5), 0, -Math.sin(car.root.rotation.y + Math.PI * 0.5)).normalize();
+  track.position.copy(car.root.position).addScaledVector(movementForward, 2.2);
+  track.rotation.y = car.root.rotation.y;
+  if (man) man.visible = true;
+  statusEl.textContent = "On foot";
+  window.setTimeout(() => {
+    statusEl.dataset.ready = "true";
+  }, 800);
+}
+
+function playDoorAnimation(car, mode) {
+  if (!car || !car.doorOpenAction || !car.doorCloseAction) return;
+  const action = mode === "open" ? car.doorOpenAction : car.doorCloseAction;
+  action.reset();
+  action.timeScale = 1;
+  action.play();
 }
 
 function updateWater(delta) {
@@ -1344,7 +1723,7 @@ function canStandAt(position) {
 }
 
 function checkPortalEntry() {
-  if (activeWorld !== "city" || isWorldTransitioning || !loaded.mountain) return;
+  if (activeWorld !== "courtyard" || isWorldTransitioning || !loaded.city) return;
   const dx = track.position.x - portalTrigger.position.x;
   const dz = track.position.z - portalTrigger.position.z;
   if (dx * dx + dz * dz < portalTrigger.radius * portalTrigger.radius) {
@@ -1371,7 +1750,7 @@ function startWorldTransition() {
     if (progress < 1) {
       window.requestAnimationFrame(tick);
     } else {
-      enterMountainScene();
+      enterCityScene();
       window.setTimeout(hideLoadingScreen, 180);
     }
   };
@@ -1379,29 +1758,31 @@ function startWorldTransition() {
   tick();
 }
 
-function enterMountainScene() {
-  activeWorld = "mountain";
+function enterCityScene() {
+  activeWorld = "city";
   isWorldTransitioning = false;
-  activeColliders = mountainColliders;
+  activeColliders = cityColliders;
   keys.clear();
   mouseControl.active = false;
   mouseControl.pointerDown = false;
+  activeCar = null;
+  if (man) man.visible = true;
 
-  cityRoot.visible = false;
+  cityRoot.visible = true;
   portalRoot.visible = false;
-  mountainRoot.visible = true;
+  mountainRoot.visible = false;
   waterRoot.visible = false;
-  ground.visible = false;
+  ground.visible = true;
 
-  scene.background.copy(worldSettings.mountain.background);
-  scene.fog = worldSettings.mountain.fog;
+  scene.background.copy(worldSettings.city.background);
+  scene.fog = worldSettings.city.fog;
 
-  track.position.set(0, 0, 5.5);
+  track.position.set(0, 0, 0);
   track.rotation.y = -Math.PI * 0.5;
-  camera.position.set(4.8, 3.6, 10.5);
-  controls.target.set(0, 0.96, 4.3);
+  camera.position.set(5.5, 4, 8.5);
+  controls.target.set(0, 0.96, 0);
 
-  statusEl.textContent = "Island";
+  statusEl.textContent = "City";
   statusEl.dataset.ready = "true";
 }
 
