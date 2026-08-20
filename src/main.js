@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
 
 const canvas = document.querySelector("#scene");
 const statusEl = document.querySelector("#status");
@@ -14,8 +15,8 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xb9d8ee);
 scene.fog = new THREE.Fog(0xb9d8ee, 55, 190);
 
-const camera = new THREE.PerspectiveCamera(48, window.innerWidth / window.innerHeight, 0.1, 320);
-camera.position.set(8, 5.2, 10);
+const camera = new THREE.PerspectiveCamera(44, window.innerWidth / window.innerHeight, 0.1, 320);
+camera.position.set(6, 4.2, 8.2);
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -29,7 +30,10 @@ renderer.toneMappingExposure = 1.02;
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.enableRotate = false;
-controls.target.set(0, 1.2, 0);
+controls.target.set(0, 1.45, 0);
+controls.minDistance = 4.5;
+controls.maxDistance = 34;
+controls.maxPolarAngle = Math.PI * 0.48;
 
 scene.add(new THREE.HemisphereLight(0xf8fbff, 0x716250, 1.45));
 const sun = new THREE.DirectionalLight(0xfff1d0, 3.4);
@@ -60,8 +64,27 @@ const right = new THREE.Vector3();
 const move = new THREE.Vector3();
 const temp = new THREE.Vector3();
 
-const player = createPlayer();
-scene.add(player.root);
+const track = new THREE.Group();
+scene.add(track);
+const player = { root: track };
+let man;
+let mixer;
+let walkAction;
+const loader = new FBXLoader();
+const walkCycleSpeed = 0.9;
+const followCamera = {
+  height: 3.15,
+  distance: 5.8,
+  minDistance: 1.9,
+  shoulder: 0.9
+};
+const worldUp = new THREE.Vector3(0, 1, 0);
+const cameraRight = new THREE.Vector3();
+const manForward = new THREE.Vector3();
+const cameraLookTarget = new THREE.Vector3();
+const desiredCameraPosition = new THREE.Vector3();
+const cameraSideOffset = new THREE.Vector3();
+const cameraTestPosition = new THREE.Vector3();
 
 const state = {
   started: false,
@@ -83,6 +106,7 @@ const state = {
 const world = {
   bounds: 44,
   platforms: [],
+  cameraBlocks: [],
   buildables: [],
   portal: null,
   trees: {},
@@ -99,6 +123,7 @@ const winds = [
 
 buildCourtyard();
 buildSecondScene();
+loadMan();
 setStatus("Start from the menu");
 
 startButton.addEventListener("click", () => {
@@ -240,6 +265,12 @@ function addBuilding(position, width, height, depth, color, hasDoor) {
   wall.receiveShadow = true;
   courtyardRoot.add(wall);
   world.platforms.push({ x: position.x, z: position.z, width, depth, y: height + 0.2 });
+  world.cameraBlocks.push(
+    new THREE.Box3(
+      new THREE.Vector3(position.x - width / 2, 0, position.z - depth / 2),
+      new THREE.Vector3(position.x + width / 2, height + 2.2, position.z + depth / 2)
+    )
+  );
 
   const roof = new THREE.Mesh(
     new THREE.ConeGeometry(Math.max(width, depth) * 0.62, 2, 4),
@@ -375,39 +406,85 @@ function buildSecondScene() {
   secondRoot.add(marker);
 }
 
-function createPlayer() {
-  const root = new THREE.Group();
-  const body = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.34, 0.82, 8, 16),
-    new THREE.MeshStandardMaterial({ color: 0x314b6b, roughness: 0.55 })
+function loadMan() {
+  loader.load(
+    "./assets/source/Mr_Man_Walking.fbx",
+    (object) => {
+      man = object;
+      normalizeModel(man);
+      track.add(man);
+
+      mixer = new THREE.AnimationMixer(man);
+      if (man.animations.length > 0) {
+        walkAction = mixer.clipAction(man.animations[0]);
+        walkAction.timeScale = 0;
+        walkAction.play();
+      }
+
+      setStatus("Original walking man loaded");
+    },
+    (event) => {
+      if (event.total > 0 && !state.started) {
+        const progress = Math.round((event.loaded / event.total) * 100);
+        setStatus(`Loading man ${progress}%`);
+      }
+    },
+    (error) => {
+      console.error(error);
+      setStatus("Could not load the original walking man");
+    }
   );
-  body.position.y = 0.95;
-  body.castShadow = true;
-  root.add(body);
-  const head = new THREE.Mesh(
-    new THREE.SphereGeometry(0.24, 18, 14),
-    new THREE.MeshStandardMaterial({ color: 0xd7b08c, roughness: 0.5 })
-  );
-  head.position.y = 1.62;
-  head.castShadow = true;
-  root.add(head);
-  root.position.set(0, 0, 0);
-  return { root, body, head };
+}
+
+function normalizeModel(object) {
+  object.traverse((child) => {
+    if (!child.isMesh) return;
+    child.castShadow = true;
+    child.receiveShadow = true;
+    if (!child.material) return;
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    materials.forEach((material) => {
+      material.side = THREE.DoubleSide;
+      material.needsUpdate = true;
+    });
+  });
+
+  const box = new THREE.Box3().setFromObject(object);
+  const size = new THREE.Vector3();
+  const center = new THREE.Vector3();
+  box.getSize(size);
+  box.getCenter(center);
+
+  const targetHeight = 1.28;
+  const scale = targetHeight / Math.max(size.y, 0.001);
+  object.scale.multiplyScalar(scale);
+
+  const scaledBox = new THREE.Box3().setFromObject(object);
+  const scaledCenter = new THREE.Vector3();
+  scaledBox.getCenter(scaledCenter);
+  object.position.x -= scaledCenter.x;
+  object.position.z -= scaledCenter.z;
+  object.position.y -= scaledBox.min.y;
+  object.rotation.y = Math.PI * 0.5;
 }
 
 function animate() {
   const delta = Math.min(clock.getDelta(), 0.05);
+  let isMoving = false;
   if (state.started) {
-    updateMovement(delta);
+    isMoving = updateMovement(delta);
     checkAbilityZones();
     checkPortal();
     updateCamera(delta);
   }
+  if (mixer) mixer.update(delta);
+  if (walkAction) walkAction.timeScale = isMoving ? walkCycleSpeed * (keys.has("shift") ? 1.45 : 1) : 0;
   controls.update();
   renderer.render(scene, camera);
 }
 
 function updateMovement(delta) {
+  if (!man) return false;
   const targetY = getGroundY(player.root.position.x, player.root.position.z);
   const grounded = player.root.position.y <= targetY + 0.04;
   if (grounded) {
@@ -446,6 +523,7 @@ function updateMovement(delta) {
   const bounds = state.world === "courtyard" ? world.bounds : 28;
   player.root.position.x = THREE.MathUtils.clamp(player.root.position.x, -bounds, bounds);
   player.root.position.z = THREE.MathUtils.clamp(player.root.position.z, -bounds, bounds);
+  return move.lengthSq() > 0;
 }
 
 function getGroundY(x, z) {
@@ -643,12 +721,57 @@ function createRing(position, color) {
 }
 
 function updateCamera(delta) {
-  const offset = state.telescopeOn ? new THREE.Vector3(0, 2.1, 2.1) : new THREE.Vector3(0, 4.8, 8.5);
-  const angle = player.root.rotation.y;
-  const desired = offset.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), angle).add(player.root.position);
-  if (state.inCloudView && player.root.position.y > 20) desired.y += 5.5;
-  camera.position.lerp(desired, Math.min(1, delta * 6.5));
-  controls.target.lerp(temp.copy(player.root.position).add(new THREE.Vector3(0, 1.25, 0)), Math.min(1, delta * 8));
+  manForward.set(Math.sin(player.root.rotation.y), 0, Math.cos(player.root.rotation.y)).normalize();
+  cameraRight.crossVectors(manForward, worldUp).normalize();
+  cameraSideOffset.copy(cameraRight).multiplyScalar(followCamera.shoulder);
+
+  cameraLookTarget.copy(player.root.position).addScaledVector(manForward, 1.15);
+  cameraLookTarget.y += state.telescopeOn ? 1.28 : 0.96;
+
+  if (state.telescopeOn) {
+    desiredCameraPosition.copy(player.root.position).addScaledVector(manForward, -1.9);
+    desiredCameraPosition.y += 2.1;
+  } else {
+    placeCameraBehindPlayer();
+  }
+
+  if (state.inCloudView && player.root.position.y > 20) desiredCameraPosition.y += 5.5;
+  camera.position.lerp(desiredCameraPosition, Math.min(1, delta * 7.5));
+  controls.target.lerp(cameraLookTarget, Math.min(1, delta * 9));
+}
+
+function placeCameraBehindPlayer() {
+  for (let distance = followCamera.distance; distance >= followCamera.minDistance; distance -= 0.45) {
+    cameraTestPosition
+      .copy(player.root.position)
+      .addScaledVector(manForward, -distance)
+      .add(cameraSideOffset);
+    cameraTestPosition.y = player.root.position.y + followCamera.height;
+
+    if (!isCameraInsideBuilding(cameraTestPosition)) {
+      desiredCameraPosition.copy(cameraTestPosition);
+      return;
+    }
+  }
+
+  desiredCameraPosition
+    .copy(player.root.position)
+    .addScaledVector(manForward, -followCamera.minDistance)
+    .add(cameraSideOffset);
+  desiredCameraPosition.y = player.root.position.y + followCamera.height + 0.6;
+}
+
+function isCameraInsideBuilding(position) {
+  if (state.world !== "courtyard") return false;
+  return world.cameraBlocks.some((box) => {
+    if (position.y < box.min.y || position.y > box.max.y) return false;
+    return (
+      position.x > box.min.x - 0.22 &&
+      position.x < box.max.x + 0.22 &&
+      position.z > box.min.z - 0.22 &&
+      position.z < box.max.z + 0.22
+    );
+  });
 }
 
 function setStatus(text) {
