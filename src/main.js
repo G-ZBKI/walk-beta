@@ -508,16 +508,16 @@ function updateMovement(delta) {
 
   const turningLeft = keys.has("a") || keys.has("arrowleft");
   const turningRight = keys.has("d") || keys.has("arrowright");
-  const movingForward = keys.has("w") || keys.has("arrowup");
-  const movingBack = keys.has("s") || keys.has("arrowdown");
-  const turnSpeed = 0.115;
+  const forwardPressed = keys.has("w") || keys.has("arrowup");
+  const turnSpeed = 0.24;
   if (turningLeft) player.root.rotation.y += delta * turnSpeed;
   if (turningRight) player.root.rotation.y -= delta * turnSpeed;
 
   move.set(Math.cos(player.root.rotation.y), 0, -Math.sin(player.root.rotation.y)).normalize();
-  if (movingForward || movingBack) {
-    const speed = (keys.has("shift") ? 8.5 : 4.8) * (state.canTeleport ? 0.75 : 1);
-    player.root.position.addScaledVector(move, speed * delta * (movingBack ? -0.55 : 1));
+  const shouldWalk = forwardPressed || turningLeft || turningRight;
+  if (shouldWalk) {
+    const speed = (keys.has("shift") ? 5.9 : 3.35) * (state.canTeleport ? 0.75 : 1);
+    player.root.position.addScaledVector(move, speed * delta);
     resolveBuildingCollision(previousX, previousZ);
   }
 
@@ -531,7 +531,7 @@ function updateMovement(delta) {
   const bounds = state.world === "courtyard" ? world.bounds : 28;
   player.root.position.x = THREE.MathUtils.clamp(player.root.position.x, -bounds, bounds);
   player.root.position.z = THREE.MathUtils.clamp(player.root.position.z, -bounds, bounds);
-  return movingForward || movingBack || turningLeft || turningRight;
+  return shouldWalk;
 }
 
 function resolveBuildingCollision(previousX, previousZ) {
