@@ -106,6 +106,7 @@ const state = {
 const world = {
   bounds: 44,
   platforms: [],
+  colliders: [],
   cameraBlocks: [],
   buildables: [],
   portal: null,
@@ -265,6 +266,14 @@ function addBuilding(position, width, height, depth, color, hasDoor) {
   wall.receiveShadow = true;
   courtyardRoot.add(wall);
   world.platforms.push({ x: position.x, z: position.z, width, depth, y: height + 0.2 });
+  world.colliders.push({
+    x: position.x,
+    z: position.z,
+    width,
+    depth,
+    height,
+    padding: 0.32
+  });
   world.cameraBlocks.push(
     new THREE.Box3(
       new THREE.Vector3(position.x - width / 2, 0, position.z - depth / 2),
@@ -485,6 +494,8 @@ function animate() {
 
 function updateMovement(delta) {
   if (!man) return false;
+  const previousX = player.root.position.x;
+  const previousZ = player.root.position.z;
   const targetY = getGroundY(player.root.position.x, player.root.position.z);
   const grounded = player.root.position.y <= targetY + 0.04;
   if (grounded) {
@@ -495,22 +506,19 @@ function updateMovement(delta) {
   if (keys.has(" ") && grounded) state.velocityY = 6.1;
   state.velocityY -= 14.5 * delta;
 
-  move.set(0, 0, 0);
-  if (keys.has("w") || keys.has("arrowup")) move.z -= 1;
-  if (keys.has("s") || keys.has("arrowdown")) move.z += 1;
-  if (keys.has("a") || keys.has("arrowleft")) move.x -= 1;
-  if (keys.has("d") || keys.has("arrowright")) move.x += 1;
+  const turningLeft = keys.has("a") || keys.has("arrowleft");
+  const turningRight = keys.has("d") || keys.has("arrowright");
+  const movingForward = keys.has("w") || keys.has("arrowup");
+  const movingBack = keys.has("s") || keys.has("arrowdown");
+  const turnSpeed = 1.15;
+  if (turningLeft) player.root.rotation.y += delta * turnSpeed;
+  if (turningRight) player.root.rotation.y -= delta * turnSpeed;
 
-  if (move.lengthSq() > 0) {
-    move.normalize();
-    camera.getWorldDirection(forward);
-    forward.y = 0;
-    forward.normalize();
-    right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
-    temp.copy(forward).multiplyScalar(-move.z).addScaledVector(right, move.x).normalize();
+  move.set(Math.sin(player.root.rotation.y), 0, Math.cos(player.root.rotation.y)).normalize();
+  if (movingForward || movingBack) {
     const speed = (keys.has("shift") ? 8.5 : 4.8) * (state.canTeleport ? 0.75 : 1);
-    player.root.position.addScaledVector(temp, speed * delta);
-    player.root.rotation.y = Math.atan2(temp.x, temp.z);
+    player.root.position.addScaledVector(move, speed * delta * (movingBack ? -0.55 : 1));
+    resolveBuildingCollision(previousX, previousZ);
   }
 
   player.root.position.y += state.velocityY * delta;
@@ -523,7 +531,43 @@ function updateMovement(delta) {
   const bounds = state.world === "courtyard" ? world.bounds : 28;
   player.root.position.x = THREE.MathUtils.clamp(player.root.position.x, -bounds, bounds);
   player.root.position.z = THREE.MathUtils.clamp(player.root.position.z, -bounds, bounds);
-  return move.lengthSq() > 0;
+  return movingForward || movingBack || turningLeft || turningRight;
+}
+
+function resolveBuildingCollision(previousX, previousZ) {
+  if (state.world !== "courtyard") return;
+  const y = player.root.position.y;
+  const hitsBuilding = world.colliders.some((collider) => {
+    if (y > collider.height - 0.15) return false;
+    return (
+      Math.abs(player.root.position.x - collider.x) < collider.width / 2 + collider.padding &&
+      Math.abs(player.root.position.z - collider.z) < collider.depth / 2 + collider.padding
+    );
+  });
+  if (!hitsBuilding) return;
+
+  const testX = player.root.position.x;
+  const testZ = player.root.position.z;
+  player.root.position.x = previousX;
+  if (!isInsideBuildingAt(player.root.position.x, testZ, y)) {
+    player.root.position.z = testZ;
+    return;
+  }
+  player.root.position.z = previousZ;
+  if (!isInsideBuildingAt(testX, player.root.position.z, y)) {
+    player.root.position.x = testX;
+  }
+}
+
+function isInsideBuildingAt(x, z, y) {
+  if (state.world !== "courtyard") return false;
+  return world.colliders.some((collider) => {
+    if (y > collider.height - 0.15) return false;
+    return (
+      Math.abs(x - collider.x) < collider.width / 2 + collider.padding &&
+      Math.abs(z - collider.z) < collider.depth / 2 + collider.padding
+    );
+  });
 }
 
 function getGroundY(x, z) {
