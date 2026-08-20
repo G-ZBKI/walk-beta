@@ -76,7 +76,7 @@ const followCamera = {
   height: 3.15,
   distance: 5.8,
   minDistance: 1.9,
-  shoulder: 0.9
+  shoulder: 0
 };
 const worldUp = new THREE.Vector3(0, 1, 0);
 const cameraRight = new THREE.Vector3();
@@ -510,11 +510,11 @@ function updateMovement(delta) {
   const turningRight = keys.has("d") || keys.has("arrowright");
   const movingForward = keys.has("w") || keys.has("arrowup");
   const movingBack = keys.has("s") || keys.has("arrowdown");
-  const turnSpeed = 1.15;
+  const turnSpeed = 0.115;
   if (turningLeft) player.root.rotation.y += delta * turnSpeed;
   if (turningRight) player.root.rotation.y -= delta * turnSpeed;
 
-  move.set(Math.sin(player.root.rotation.y), 0, Math.cos(player.root.rotation.y)).normalize();
+  move.set(Math.cos(player.root.rotation.y), 0, -Math.sin(player.root.rotation.y)).normalize();
   if (movingForward || movingBack) {
     const speed = (keys.has("shift") ? 8.5 : 4.8) * (state.canTeleport ? 0.75 : 1);
     player.root.position.addScaledVector(move, speed * delta * (movingBack ? -0.55 : 1));
@@ -765,7 +765,7 @@ function createRing(position, color) {
 }
 
 function updateCamera(delta) {
-  manForward.set(Math.sin(player.root.rotation.y), 0, Math.cos(player.root.rotation.y)).normalize();
+  manForward.set(Math.cos(player.root.rotation.y), 0, -Math.sin(player.root.rotation.y)).normalize();
   cameraRight.crossVectors(manForward, worldUp).normalize();
   cameraSideOffset.copy(cameraRight).multiplyScalar(followCamera.shoulder);
 
