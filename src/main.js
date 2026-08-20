@@ -509,7 +509,7 @@ function updateMovement(delta) {
   const turningLeft = keys.has("a") || keys.has("arrowleft");
   const turningRight = keys.has("d") || keys.has("arrowright");
   const forwardPressed = keys.has("w") || keys.has("arrowup");
-  const turnSpeed = 0.65;
+  const turnSpeed = 1.1;
   if (turningLeft) player.root.rotation.y += delta * turnSpeed;
   if (turningRight) player.root.rotation.y -= delta * turnSpeed;
 
