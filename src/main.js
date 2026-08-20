@@ -140,7 +140,7 @@ controlsButton.addEventListener("click", () => {
 
 window.addEventListener("keydown", (event) => {
   const key = event.key.toLowerCase();
-  if (["w", "a", "s", "d", "arrowup", "arrowleft", "arrowdown", "arrowright", " ", "shift"].includes(key)) {
+  if (["w", "a", "d", "arrowup", "arrowleft", "arrowright", " ", "shift"].includes(key)) {
     event.preventDefault();
     keys.add(key);
   }
@@ -509,7 +509,7 @@ function updateMovement(delta) {
   const turningLeft = keys.has("a") || keys.has("arrowleft");
   const turningRight = keys.has("d") || keys.has("arrowright");
   const forwardPressed = keys.has("w") || keys.has("arrowup");
-  const turnSpeed = 0.24;
+  const turnSpeed = 0.65;
   if (turningLeft) player.root.rotation.y += delta * turnSpeed;
   if (turningRight) player.root.rotation.y -= delta * turnSpeed;
 
