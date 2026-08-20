@@ -1,284 +1,136 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
 
 const canvas = document.querySelector("#scene");
 const statusEl = document.querySelector("#status");
 const loadingScreen = document.querySelector("#loading-screen");
 const loadingProgress = document.querySelector("#loading-progress");
+const menu = document.querySelector("#main-menu");
+const startButton = document.querySelector("#start-game");
+const controlsButton = document.querySelector("#show-controls");
+const menuText = document.querySelector("#menu-text");
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x22303c);
-scene.fog = new THREE.Fog(0x22303c, 55, 185);
+scene.background = new THREE.Color(0xb9d8ee);
+scene.fog = new THREE.Fog(0xb9d8ee, 55, 190);
 
-const camera = new THREE.PerspectiveCamera(44, window.innerWidth / window.innerHeight, 0.1, 260);
-camera.position.set(6, 4.2, 8.2);
+const camera = new THREE.PerspectiveCamera(48, window.innerWidth / window.innerHeight, 0.1, 320);
+camera.position.set(8, 5.2, 10);
 
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.12;
-
-const postScene = new THREE.Scene();
-const postCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-const sceneTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
-  depthBuffer: true,
-  stencilBuffer: false
-});
-const historyTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
-  depthBuffer: false,
-  stencilBuffer: false
-});
-const copyScene = new THREE.Scene();
-const copyMaterial = new THREE.MeshBasicMaterial({ map: sceneTarget.texture });
-copyScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), copyMaterial));
-const postMaterial = new THREE.ShaderMaterial({
-  uniforms: {
-    currentFrame: { value: sceneTarget.texture },
-    historyFrame: { value: historyTarget.texture },
-    resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-    focusDistance: { value: 0.38 },
-    blurStrength: { value: 0.42 },
-    motionStrength: { value: 0.28 }
-  },
-  vertexShader: `
-    varying vec2 vUv;
-    void main() {
-      vUv = uv;
-      gl_Position = vec4(position.xy, 0.0, 1.0);
-    }
-  `,
-  fragmentShader: `
-    uniform sampler2D currentFrame;
-    uniform sampler2D historyFrame;
-    uniform vec2 resolution;
-    uniform float focusDistance;
-    uniform float blurStrength;
-    uniform float motionStrength;
-    varying vec2 vUv;
-
-    vec3 sampleBlur(vec2 uv, float radius) {
-      vec2 texel = 1.0 / resolution;
-      vec3 color = texture2D(currentFrame, uv).rgb * 0.28;
-      color += texture2D(currentFrame, uv + texel * vec2(radius, 0.0)).rgb * 0.12;
-      color += texture2D(currentFrame, uv - texel * vec2(radius, 0.0)).rgb * 0.12;
-      color += texture2D(currentFrame, uv + texel * vec2(0.0, radius)).rgb * 0.12;
-      color += texture2D(currentFrame, uv - texel * vec2(0.0, radius)).rgb * 0.12;
-      color += texture2D(currentFrame, uv + texel * vec2(radius, radius)).rgb * 0.06;
-      color += texture2D(currentFrame, uv + texel * vec2(-radius, radius)).rgb * 0.06;
-      color += texture2D(currentFrame, uv + texel * vec2(radius, -radius)).rgb * 0.06;
-      color += texture2D(currentFrame, uv + texel * vec2(-radius, -radius)).rgb * 0.06;
-      return color;
-    }
-
-    void main() {
-      vec3 current = texture2D(currentFrame, vUv).rgb;
-      vec3 history = texture2D(historyFrame, vUv).rgb;
-      float focusMask = smoothstep(0.08, 0.58, abs(vUv.y - focusDistance));
-      vec3 dof = sampleBlur(vUv, mix(0.8, 3.8, focusMask * blurStrength));
-      vec3 motion = mix(current, history, motionStrength);
-      vec3 color = mix(current, dof, focusMask * blurStrength);
-      color = mix(color, motion, motionStrength * 0.42);
-      gl_FragColor = vec4(color, 1.0);
-    }
-  `
-});
-postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), postMaterial));
+renderer.toneMappingExposure = 1.02;
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.enableRotate = false;
-controls.target.set(0, 1.45, 0);
-controls.minDistance = 4.5;
-controls.maxDistance = 34;
-controls.maxPolarAngle = Math.PI * 0.48;
+controls.target.set(0, 1.2, 0);
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.65));
-scene.add(new THREE.HemisphereLight(0xf7fbff, 0x4a453b, 2.25));
+scene.add(new THREE.HemisphereLight(0xf8fbff, 0x716250, 1.45));
+const sun = new THREE.DirectionalLight(0xfff1d0, 3.4);
+sun.position.set(18, 28, 14);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.near = 1;
+sun.shadow.camera.far = 90;
+sun.shadow.camera.left = -45;
+sun.shadow.camera.right = 45;
+sun.shadow.camera.top = 45;
+sun.shadow.camera.bottom = -45;
+scene.add(sun);
 
-const keyLight = new THREE.DirectionalLight(0xfff3d9, 5.1);
-keyLight.position.set(7, 11, 5);
-keyLight.castShadow = true;
-keyLight.shadow.mapSize.set(2048, 2048);
-keyLight.shadow.camera.near = 0.5;
-keyLight.shadow.camera.far = 44;
-keyLight.shadow.camera.left = -14;
-keyLight.shadow.camera.right = 14;
-keyLight.shadow.camera.top = 14;
-keyLight.shadow.camera.bottom = -14;
-scene.add(keyLight);
+const courtyardRoot = new THREE.Group();
+const secondRoot = new THREE.Group();
+secondRoot.visible = false;
+scene.add(courtyardRoot, secondRoot);
 
-const rimLight = new THREE.DirectionalLight(0xb6dcff, 2.4);
-rimLight.position.set(-8, 6, -8);
-scene.add(rimLight);
-
-const sun = createSunAndSky();
-scene.add(sun.sky);
-scene.add(sun.disc);
-scene.add(sun.glow);
-
-const checkerTexture = makeCheckerTexture();
-checkerTexture.wrapS = THREE.RepeatWrapping;
-checkerTexture.wrapT = THREE.RepeatWrapping;
-checkerTexture.repeat.set(42, 42);
-checkerTexture.colorSpace = THREE.SRGBColorSpace;
-
-const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(168, 168),
-  new THREE.MeshStandardMaterial({
-    map: checkerTexture,
-    roughness: 0.78,
-    metalness: 0.02,
-    transparent: true,
-    opacity: 0.92
-  })
-);
-ground.rotation.x = -Math.PI / 2;
-ground.position.y = 0.015;
-ground.receiveShadow = true;
-ground.visible = false;
-scene.add(ground);
-
-const cityRoot = new THREE.Group();
-cityRoot.visible = false;
-scene.add(cityRoot);
-
-const waterRoot = new THREE.Group();
-scene.add(waterRoot);
-
-const portalRoot = new THREE.Group();
-scene.add(portalRoot);
-
-const mountainRoot = new THREE.Group();
-scene.add(mountainRoot);
-
-const track = new THREE.Group();
-scene.add(track);
-
-let mixer;
-let man;
-let walkAction;
-let city;
-let portalMixer;
-let courtyard;
-const strideSpeed = 0.48;
-const walkCycleSpeed = 0.9;
-const runMultiplier = 1.75;
-const loaded = { city: false, man: false, portal: false, mountain: false, cars: false };
-let activeWorld = "courtyard";
-let isWorldTransitioning = false;
-const keys = new Set();
-let verticalVelocity = 0;
-let jumpOffset = 0;
-const jumpSettings = {
-  strength: 4.2,
-  gravity: 10.5
-};
-const moveDirection = new THREE.Vector3();
-const mouseDirection = new THREE.Vector3();
-const candidatePosition = new THREE.Vector3();
-const xSlidePosition = new THREE.Vector3();
-const zSlidePosition = new THREE.Vector3();
-const cameraTestPosition = new THREE.Vector3();
-const movementForward = new THREE.Vector3();
-const pointer = new THREE.Vector2();
-const groundTarget = new THREE.Vector3();
-const cameraRight = new THREE.Vector3();
-const manForward = new THREE.Vector3();
-const cameraLookTarget = new THREE.Vector3();
-const desiredCameraPosition = new THREE.Vector3();
-const cameraSideOffset = new THREE.Vector3();
-const followCamera = {
-  height: 3.15,
-  distance: 5.8,
-  minDistance: 1.9,
-  shoulder: 0.9
-};
-const worldUp = new THREE.Vector3(0, 1, 0);
-const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-const raycaster = new THREE.Raycaster();
-const worldSettings = {
-  city: {
-    boundsRadius: 76,
-    background: new THREE.Color(0x22303c),
-    fog: new THREE.Fog(0x22303c, 90, 260)
-  },
-  courtyard: {
-    boundsRadius: 15.5,
-    background: new THREE.Color(0xd8e8f2),
-    fog: new THREE.Fog(0xd8e8f2, 38, 145)
-  }
-};
-scene.background.copy(worldSettings.courtyard.background);
-scene.fog = worldSettings.courtyard.fog;
-const playerCollider = { radius: 0.3, height: 1.28 };
-const cityColliders = [];
-const mountainColliders = [];
-let activeColliders = mountainColliders;
-const portalTrigger = {
-  position: new THREE.Vector3(4.8, 0, -6.2),
-  radius: 2.2
-};
-const mouseControl = {
-  active: false,
-  pointerDown: false,
-  target: new THREE.Vector3()
-};
-const islandAssets = { island: false, cloud: false };
-const animatedTrees = [];
-const peaches = [];
-let pickedPeaches = 0;
-let pickupMessageTimer;
-const waterZones = [];
-const splashRings = [];
-let wasInWater = false;
-let reflectionTimer = 0;
-let hasHistoryFrame = false;
-let isInWater = false;
-const cars = [];
-let activeCar = null;
-let nearestCar = null;
-let carHintTimer;
-const peachArrow = new THREE.ArrowHelper(
-  new THREE.Vector3(0, 0, -1),
-  new THREE.Vector3(0, 2.25, 0),
-  2.15,
-  0x22aaff,
-  0.7,
-  0.42
-);
-peachArrow.visible = false;
-scene.add(peachArrow);
-const reflectionTarget = new THREE.WebGLCubeRenderTarget(128, {
-  format: THREE.RGBAFormat,
-  generateMipmaps: true,
-  minFilter: THREE.LinearMipmapLinearFilter
-});
-const reflectionCamera = new THREE.CubeCamera(0.1, 220, reflectionTarget);
-reflectionCamera.position.set(0, 2.2, 0);
-scene.add(reflectionCamera);
 const clock = new THREE.Clock();
+const keys = new Set();
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const pointerTarget = new THREE.Vector3();
+const forward = new THREE.Vector3();
+const right = new THREE.Vector3();
+const move = new THREE.Vector3();
+const temp = new THREE.Vector3();
+
+const player = createPlayer();
+scene.add(player.root);
+
+const state = {
+  started: false,
+  world: "courtyard",
+  velocityY: 0,
+  canTeleport: false,
+  hasTelescope: false,
+  canBuild: false,
+  teleportMode: false,
+  buildMode: "build",
+  windIndex: 0,
+  boatBuilt: false,
+  inCloudView: false,
+  telescopeOn: false,
+  messageTimer: 0,
+  portalBusy: false
+};
+
+const world = {
+  bounds: 44,
+  platforms: [],
+  buildables: [],
+  portal: null,
+  trees: {},
+  boat: null,
+  windArrow: null
+};
+
+const winds = [
+  { name: "east", angle: 0, helpful: true },
+  { name: "north", angle: Math.PI * 0.5, helpful: false },
+  { name: "west", angle: Math.PI, helpful: false },
+  { name: "south", angle: Math.PI * 1.5, helpful: false }
+];
+
+buildCourtyard();
+buildSecondScene();
+setStatus("Start from the menu");
+
+startButton.addEventListener("click", () => {
+  state.started = true;
+  menu.dataset.hidden = "true";
+  setStatus("Find the three giant trees");
+});
+
+controlsButton.addEventListener("click", () => {
+  menuText.textContent =
+    "WASD move, Space jump, Shift run. E interact. After unlocks: T teleport mode, Q telescope, 1 build, 2 destruct, click to place/delete.";
+});
 
 window.addEventListener("keydown", (event) => {
   const key = event.key.toLowerCase();
-  if (key === "f") {
+  if (["w", "a", "s", "d", "arrowup", "arrowleft", "arrowdown", "arrowright", " ", "shift"].includes(key)) {
     event.preventDefault();
-    toggleCarMode();
-    return;
+    keys.add(key);
   }
-  if (["w", "a", "d", "arrowup", "arrowleft", "arrowright", " ", "shift"].includes(key)) {
-    event.preventDefault();
-    if (key === " " && jumpOffset <= 0.001) {
-      verticalVelocity = jumpSettings.strength;
-    } else {
-      keys.add(key);
-    }
+  if (key === "e") interact();
+  if (key === "t" && state.canTeleport) {
+    state.teleportMode = !state.teleportMode;
+    setStatus(state.teleportMode ? "Teleport mode: click anywhere in the yard" : "Teleport mode off");
+  }
+  if (key === "q" && state.hasTelescope) toggleTelescope();
+  if (key === "1" && state.canBuild) {
+    state.buildMode = "build";
+    setStatus("Build mode: click to place blocks");
+  }
+  if (key === "2" && state.canBuild) {
+    state.buildMode = "destruct";
+    setStatus("Destruct mode: click your blocks to remove them");
   }
 });
 
@@ -286,1626 +138,538 @@ window.addEventListener("keyup", (event) => {
   keys.delete(event.key.toLowerCase());
 });
 
-window.addEventListener("blur", () => {
-  keys.clear();
-  mouseControl.pointerDown = false;
-  mouseControl.active = false;
-});
-
 canvas.addEventListener("pointerdown", (event) => {
-  if (event.button !== 0) return;
-  mouseControl.pointerDown = true;
-  setMouseTarget(event);
+  if (!state.started || event.button !== 0) return;
+  setPointerTarget(event);
+  if (state.canTeleport && state.teleportMode) {
+    player.root.position.set(pointerTarget.x, getGroundY(pointerTarget.x, pointerTarget.z), pointerTarget.z);
+    createRing(pointerTarget, 0x6bdcff);
+    setStatus("Teleported");
+    return;
+  }
+  if (state.canBuild) handleBuildClick(event);
 });
 
-canvas.addEventListener("pointermove", (event) => {
-  if (mouseControl.pointerDown) setMouseTarget(event);
-});
-
-window.addEventListener("pointerup", () => {
-  mouseControl.pointerDown = false;
-  mouseControl.active = false;
-});
-
-const manager = new THREE.LoadingManager();
-manager.setURLModifier((url) => {
-  if (url.startsWith("./assets/") || url.startsWith("assets/")) {
-    return url;
-  }
-  const fileName = url.split(/[\\/]/).pop();
-  if (fileName && /\.tga$/i.test(fileName)) {
-    return `./assets/textures/${fileName}.png`;
-  }
-  if (fileName && /\.(png|jpe?g|webp)$/i.test(fileName)) {
-    return `./assets/textures/${fileName}`;
-  }
-  return url;
-});
-
-const loader = new FBXLoader(manager);
-const gltfLoader = new GLTFLoader(createAssetManager("./assets/courtyard/textures/"));
-const objLoader = new OBJLoader(manager);
-const textureLoader = new THREE.TextureLoader(manager);
-const portalEmissionTexture = loadTexture("./assets/textures/T_PortalInside_Emission.png");
-const portalOpacityTexture = loadTexture("./assets/textures/T_PortalInside_Opacity.png", false);
-const islandTexture = loadTexture("./assets/island/island_diffuse.png");
-const cloudTexture = loadTexture("./assets/island/cloud_texture1.png");
-const treeBarkTexture = loadTexture("./assets/island/tree_bark.png");
-const treeLeafTexture = loadTexture("./assets/island/tree_leaf.png");
-const treeLeafOpacityTexture = loadTexture("./assets/island/tree_leaf_opacity.png", false);
-const peachAlbedoTexture = loadTexture("./assets/peach/peach_albedo.jpg");
-const peachNormalTexture = loadTexture("./assets/peach/peach_normal.png", false);
-const peachRoughnessTexture = loadTexture("./assets/peach/peach_roughness.jpg", false);
-const templeTextures = {
-  stone: loadTexture("./assets/textures/MountainRock_D.tga.png"),
-  snow: loadTexture("./assets/textures/Snow_D.tga.png"),
-  snowRock: loadTexture("./assets/textures/SnowRockCombo_D.tga.png"),
-  road: loadTexture("./assets/textures/Road_D.TGA.png"),
-  sky: loadTexture("./assets/textures/Sky_D.tga.png"),
-  grass: loadTexture("./assets/textures/GoundGrass_D.TGA.png"),
-  groundStone: loadTexture("./assets/textures/GoundStone_D.TGA.png"),
-  wall: loadTexture("./assets/textures/TempleWall_D.TGA.png"),
-  baseWall: loadTexture("./assets/textures/TempleBaseWall_D.TGA.png"),
-  wood: loadTexture("./assets/textures/Wood_D.tga.png"),
-  roof: loadTexture("./assets/textures/Roof_D.TGA.png"),
-  foliage: loadTexture("./assets/textures/FoliageandFlags_D.tga.png")
-};
-
-city = createProceduralCity();
-cityRoot.add(city);
-buildCityColliders(city);
-loaded.city = true;
-updateReadyState();
-
-loadCourtyard();
-loadCars();
-
-loader.load(
-  "./assets/source/Portal.fbx",
-  (object) => {
-    preparePortal(object);
-    portalRoot.add(object);
-
-    portalMixer = new THREE.AnimationMixer(object);
-    object.animations.forEach((clip) => {
-      portalMixer.clipAction(clip).play();
-    });
-
-    loaded.portal = true;
-    updateReadyState();
-  },
-  (event) => {
-    if (event.total > 0 && !statusEl.dataset.ready) {
-      const progress = Math.round((event.loaded / event.total) * 100);
-      statusEl.textContent = `Loading portal ${progress}%`;
-    }
-  },
-  (error) => {
-    console.error(error);
-    statusEl.textContent = "Could not load portal";
-  }
-);
-
-// The courtyard model replaces the previous peach/island world.
-
-loader.load(
-  "./assets/source/Mr_Man_Walking.fbx",
-  (object) => {
-    man = object;
-    normalizeModel(man);
-    track.add(man);
-
-    mixer = new THREE.AnimationMixer(man);
-    if (man.animations.length > 0) {
-      walkAction = mixer.clipAction(man.animations[0]);
-      walkAction.timeScale = 0;
-      walkAction.play();
-    }
-
-    loaded.man = true;
-    updateReadyState();
-  },
-  (event) => {
-    if (event.total > 0) {
-      const progress = Math.round((event.loaded / event.total) * 100);
-      statusEl.textContent = `Loading model ${progress}%`;
-    }
-  },
-  (error) => {
-    console.error(error);
-    statusEl.textContent = "Could not load model";
-  }
-);
-
-function updateReadyState() {
-  if (!loaded.man || !loaded.city || !loaded.portal || !loaded.mountain || !loaded.cars) return;
-  statusEl.textContent = "Ready";
-  statusEl.dataset.ready = "true";
-}
-
-function updateIslandReadyState() {
-  if (!islandAssets.island || !islandAssets.cloud) return;
-  loaded.mountain = true;
-  updateReadyState();
-}
-
-function createAssetManager(textureBasePath) {
-  const assetManager = new THREE.LoadingManager();
-  assetManager.setURLModifier((url) => {
-    if (url.startsWith("./assets/") || url.startsWith("assets/") || url.startsWith("blob:") || url.startsWith("data:")) {
-      return url;
-    }
-    const fileName = url.split(/[\\/]/).pop();
-    if (fileName && /\.(png|jpe?g|webp|gif)$/i.test(fileName)) {
-      return `${textureBasePath}${fileName}`;
-    }
-    return url;
-  });
-  return assetManager;
-}
-
-function loadCourtyard() {
-  gltfLoader.load(
-    "./assets/courtyard/source/四合院final2 2024_10_14.glb",
-    (gltf) => {
-      courtyard = gltf.scene;
-      prepareCourtyard(courtyard);
-      mountainRoot.add(courtyard);
-      loaded.mountain = true;
-      updateReadyState();
-    },
-    undefined,
-    (error) => {
-      console.error(error);
-      statusEl.textContent = "Could not load courtyard";
-    }
+function buildCourtyard() {
+  const ground = new THREE.Mesh(
+    new THREE.BoxGeometry(90, 0.14, 90),
+    new THREE.MeshStandardMaterial({ color: 0xb9b09f, roughness: 0.86 })
   );
+  ground.position.y = -0.07;
+  ground.receiveShadow = true;
+  courtyardRoot.add(ground);
+
+  addPaving();
+  addLake();
+  addMainBuilding();
+  addCourtyardBuildings();
+  addCloudLayer();
+
+  world.trees.first = addGiantTree("first", new THREE.Vector3(-24, 0, -18), 0x3c7f4c);
+  addLadder(world.trees.first.group, new THREE.Vector3(1.45, 3.4, 0), 11.5);
+
+  world.trees.second = addGiantTree("second", new THREE.Vector3(25, 0, 15), 0x2f7454);
+  world.trees.third = addGiantTree("third", new THREE.Vector3(-18, 0, 24), 0x416d42);
+  addParkourRoute();
+  addWindDisplay();
+
+  world.portal = createPortal(new THREE.Vector3(0, 0.15, -27));
+  courtyardRoot.add(world.portal);
 }
 
-function loadCars() {
-  const carSpecs = [
-    {
-      id: "aston",
-      name: "Aston Martin Valkyrie",
-      url: "./assets/cars/aston/source/Aston Martin Valkyrie.fbx",
-      textures: "./assets/cars/aston/textures/",
-      position: new THREE.Vector3(-10, 0, 10),
-      rotation: Math.PI * 0.15,
-      length: 4.7,
-      color: 0x1f3247,
-      scale: 1,
-      doorSplit: 2.86
-    },
-    {
-      id: "tesla",
-      name: "Tesla Model 3",
-      url: "./assets/cars/tesla/source/tesla_car1.fbx",
-      textures: "./assets/cars/tesla/textures/",
-      position: new THREE.Vector3(11, 0, 14),
-      rotation: -Math.PI * 0.55,
-      length: 4.5,
-      color: 0xbfd4e8,
-      scale: 1
-    },
-    {
-      id: "vw",
-      name: "Volkswagen Golf GTI",
-      url: "./assets/cars/vw/FINAL_MODEL_16.fbx",
-      textures: "./assets/cars/vw/",
-      position: new THREE.Vector3(3, 0, -16),
-      rotation: Math.PI * 0.95,
-      length: 4.3,
-      color: 0xc83a32,
-      scale: 1
-    }
-  ];
-
-  let remaining = carSpecs.length;
-  carSpecs.forEach((spec) => {
-    const carLoader = new FBXLoader(createAssetManager(spec.textures));
-    carLoader.load(
-      spec.url,
-      (object) => {
-        const car = prepareCar(object, spec);
-        cityRoot.add(car.root);
-        cars.push(car);
-        remaining -= 1;
-        if (remaining === 0) {
-          loaded.cars = true;
-          updateReadyState();
-        }
-      },
-      undefined,
-      (error) => {
-        console.error(error);
-        const fallback = createFallbackCar(spec);
-        cityRoot.add(fallback.root);
-        cars.push(fallback);
-        remaining -= 1;
-        if (remaining === 0) {
-          loaded.cars = true;
-          updateReadyState();
-        }
-      }
-    );
-  });
-}
-
-function normalizeModel(object) {
-  object.traverse((child) => {
-    if (child.isMesh) {
-      child.castShadow = true;
-      child.receiveShadow = true;
-      if (child.material) {
-        const materials = Array.isArray(child.material) ? child.material : [child.material];
-        materials.forEach((material) => {
-          material.side = THREE.DoubleSide;
-          material.needsUpdate = true;
-        });
-      }
-    }
-  });
-
-  const box = new THREE.Box3().setFromObject(object);
-  const size = new THREE.Vector3();
-  const center = new THREE.Vector3();
-  box.getSize(size);
-  box.getCenter(center);
-
-  const targetHeight = 1.28;
-  const scale = targetHeight / Math.max(size.y, 0.001);
-  object.scale.multiplyScalar(scale);
-
-  const scaledBox = new THREE.Box3().setFromObject(object);
-  const scaledCenter = new THREE.Vector3();
-  scaledBox.getCenter(scaledCenter);
-  object.position.x -= scaledCenter.x;
-  object.position.z -= scaledCenter.z;
-  object.position.y -= scaledBox.min.y;
-  object.rotation.y = Math.PI * 0.5;
-}
-
-function prepareCourtyard(object) {
-  object.traverse((child) => {
-    if (child.isMesh) {
-      child.castShadow = true;
-      child.receiveShadow = true;
-      if (child.material) {
-        const materials = Array.isArray(child.material) ? child.material : [child.material];
-        materials.forEach((material) => {
-          material.roughness = Math.max(material.roughness ?? 0.68, 0.64);
-          material.side = THREE.DoubleSide;
-          material.needsUpdate = true;
-        });
-      }
-    }
-  });
-
-  fitObjectToScene(object, 24);
-  object.rotation.y = Math.PI * 0.08;
-}
-
-function fitObjectToScene(object, targetWidth) {
-  const box = new THREE.Box3().setFromObject(object);
-  const size = new THREE.Vector3();
-  box.getSize(size);
-  const widestSide = Math.max(size.x, size.z, 0.001);
-  object.scale.multiplyScalar(targetWidth / widestSide);
-
-  const scaledBox = new THREE.Box3().setFromObject(object);
-  const scaledCenter = new THREE.Vector3();
-  scaledBox.getCenter(scaledCenter);
-  object.position.x -= scaledCenter.x;
-  object.position.z -= scaledCenter.z;
-  object.position.y -= scaledBox.min.y;
-}
-
-function prepareCar(object, spec) {
-  const root = new THREE.Group();
-  root.name = spec.name;
-  root.add(object);
-
-  object.traverse((child) => {
-    if (child.isMesh) {
-      child.castShadow = true;
-      child.receiveShadow = true;
-      if (child.material) {
-        const materials = Array.isArray(child.material) ? child.material : [child.material];
-        materials.forEach((material) => {
-          material.side = THREE.DoubleSide;
-          material.roughness = Math.min(material.roughness ?? 0.45, 0.58);
-          if ((material.name || "").toLowerCase().includes("lamp")) {
-            material.emissive = new THREE.Color(0xd7f4ff);
-            material.emissiveIntensity = 0.8;
-          }
-          material.needsUpdate = true;
-        });
-      }
-    }
-  });
-
-  fitCarObject(object, spec.length);
-  root.position.copy(spec.position);
-  root.rotation.y = spec.rotation;
-
-  const car = {
-    id: spec.id,
-    name: spec.name,
-    root,
-    model: object,
-    speed: 0,
-    maxSpeed: spec.id === "aston" ? 12 : 9,
-    acceleration: spec.id === "aston" ? 13 : 10,
-    turnSpeed: spec.id === "aston" ? 1.95 : 1.65,
-    doorMixer: null,
-    doorOpenAction: null,
-    doorCloseAction: null
-  };
-
-  if (spec.doorSplit && object.animations.length > 0) {
-    car.doorMixer = new THREE.AnimationMixer(object);
-    const clip = object.animations[0];
-    const fps = 30;
-    const splitFrame = Math.floor(spec.doorSplit * fps);
-    const endFrame = Math.floor(clip.duration * fps);
-    car.doorCloseAction = car.doorMixer.clipAction(THREE.AnimationUtils.subclip(clip, "doors close", 0, splitFrame, fps));
-    car.doorOpenAction = car.doorMixer.clipAction(THREE.AnimationUtils.subclip(clip, "doors open", splitFrame, endFrame, fps));
-    car.doorCloseAction.setLoop(THREE.LoopOnce, 1);
-    car.doorOpenAction.setLoop(THREE.LoopOnce, 1);
-    car.doorCloseAction.clampWhenFinished = true;
-    car.doorOpenAction.clampWhenFinished = true;
-  }
-
-  addCarLights(root, spec);
-  return car;
-}
-
-function fitCarObject(object, targetLength) {
-  const box = new THREE.Box3().setFromObject(object);
-  const size = new THREE.Vector3();
-  box.getSize(size);
-  const longest = Math.max(size.x, size.z, 0.001);
-  object.scale.multiplyScalar(targetLength / longest);
-
-  const scaledBox = new THREE.Box3().setFromObject(object);
-  const scaledCenter = new THREE.Vector3();
-  scaledBox.getCenter(scaledCenter);
-  object.position.x -= scaledCenter.x;
-  object.position.z -= scaledCenter.z;
-  object.position.y -= scaledBox.min.y;
-}
-
-function createFallbackCar(spec) {
-  const root = new THREE.Group();
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(spec.length, 0.78, spec.length * 0.46),
-    new THREE.MeshStandardMaterial({ color: spec.color, metalness: 0.25, roughness: 0.28 })
-  );
-  body.position.y = 0.55;
-  body.castShadow = true;
-  root.add(body);
-
-  const cabin = new THREE.Mesh(
-    new THREE.BoxGeometry(spec.length * 0.48, 0.55, spec.length * 0.34),
-    new THREE.MeshStandardMaterial({ color: 0x1d2a33, metalness: 0.1, roughness: 0.12 })
-  );
-  cabin.position.set(0.1, 1.05, 0);
-  cabin.castShadow = true;
-  root.add(cabin);
-
-  for (const x of [-1, 1]) {
-    for (const z of [-1, 1]) {
-      const wheel = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.34, 0.34, 0.22, 20),
-        new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.55 })
-      );
-      wheel.rotation.z = Math.PI * 0.5;
-      wheel.position.set(x * spec.length * 0.32, 0.32, z * spec.length * 0.27);
-      wheel.castShadow = true;
-      root.add(wheel);
+function addPaving() {
+  const matA = new THREE.MeshStandardMaterial({ color: 0xd5c8ae, roughness: 0.78 });
+  const matB = new THREE.MeshStandardMaterial({ color: 0xa9957b, roughness: 0.82 });
+  for (let x = -10; x <= 10; x += 2) {
+    for (let z = -10; z <= 10; z += 2) {
+      const tile = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.05, 1.85), (x + z) % 4 === 0 ? matA : matB);
+      tile.position.set(x, 0.02, z);
+      tile.receiveShadow = true;
+      courtyardRoot.add(tile);
     }
   }
-
-  root.position.copy(spec.position);
-  root.rotation.y = spec.rotation;
-  addCarLights(root, spec);
-  return { id: spec.id, name: spec.name, root, model: root, speed: 0, maxSpeed: 8, acceleration: 9, turnSpeed: 1.55 };
 }
 
-function addCarLights(root, spec) {
-  const headlight = new THREE.SpotLight(0xdff7ff, 1.7, 20, Math.PI * 0.18, 0.5, 1.2);
-  headlight.position.set(spec.length * 0.5, 0.72, 0);
-  headlight.target.position.set(spec.length * 1.7, 0.35, 0);
-  root.add(headlight);
-  root.add(headlight.target);
+function addLake() {
+  const lake = new THREE.Mesh(
+    new THREE.CylinderGeometry(10, 12, 0.12, 64),
+    new THREE.MeshPhysicalMaterial({
+      color: 0x2b91b8,
+      roughness: 0.16,
+      metalness: 0,
+      transmission: 0.2,
+      transparent: true,
+      opacity: 0.82
+    })
+  );
+  lake.scale.z = 0.7;
+  lake.position.set(13, 0.03, 14);
+  lake.receiveShadow = true;
+  courtyardRoot.add(lake);
 
-  const tail = new THREE.PointLight(0xff2b1c, 0.9, 5, 1.8);
-  tail.position.set(-spec.length * 0.48, 0.55, 0);
-  root.add(tail);
+  const dock = new THREE.Mesh(new THREE.BoxGeometry(4, 0.16, 6), new THREE.MeshStandardMaterial({ color: 0x76533a }));
+  dock.position.set(3.7, 0.12, 11.8);
+  dock.receiveShadow = true;
+  dock.castShadow = true;
+  courtyardRoot.add(dock);
 }
 
-function prepareCity(object) {
-  object.traverse((child) => {
-    if (child.isMesh) {
-      child.castShadow = true;
-      child.receiveShadow = true;
-      if (child.material) {
-        const materials = Array.isArray(child.material) ? child.material : [child.material];
-        materials.forEach((material) => {
-          material.roughness = Math.max(material.roughness ?? 0.6, 0.58);
-          material.needsUpdate = true;
-        });
-      }
-    }
-  });
-
-  const box = new THREE.Box3().setFromObject(object);
-  const size = new THREE.Vector3();
-  const center = new THREE.Vector3();
-  box.getSize(size);
-  box.getCenter(center);
-
-  const targetWidth = 92;
-  const widestSide = Math.max(size.x, size.z, 0.001);
-  object.scale.multiplyScalar(targetWidth / widestSide);
-
-  const scaledBox = new THREE.Box3().setFromObject(object);
-  const scaledCenter = new THREE.Vector3();
-  scaledBox.getCenter(scaledCenter);
-  object.position.x -= scaledCenter.x;
-  object.position.z -= scaledCenter.z;
-  object.position.y -= scaledBox.min.y;
-  object.rotation.y = -Math.PI * 0.08;
+function addMainBuilding() {
+  addBuilding(new THREE.Vector3(0, 0, -30), 18, 6, 7, 0xb44332, true);
+  const sign = new THREE.Mesh(
+    new THREE.BoxGeometry(5.2, 0.5, 0.18),
+    new THREE.MeshStandardMaterial({ color: 0x2b1913, roughness: 0.55 })
+  );
+  sign.position.set(0, 4.5, -26.42);
+  courtyardRoot.add(sign);
 }
 
-function createProceduralCity() {
+function addCourtyardBuildings() {
+  addBuilding(new THREE.Vector3(-30, 0, 1), 8, 4.6, 32, 0xc65a3d, false);
+  addBuilding(new THREE.Vector3(30, 0, 1), 8, 4.6, 32, 0xc65a3d, false);
+  addBuilding(new THREE.Vector3(0, 0, 34), 28, 4.2, 7, 0xba4f37, false);
+}
+
+function addBuilding(position, width, height, depth, color, hasDoor) {
+  const wall = new THREE.Mesh(
+    new THREE.BoxGeometry(width, height, depth),
+    new THREE.MeshStandardMaterial({ color, roughness: 0.68 })
+  );
+  wall.position.set(position.x, height / 2, position.z);
+  wall.castShadow = true;
+  wall.receiveShadow = true;
+  courtyardRoot.add(wall);
+  world.platforms.push({ x: position.x, z: position.z, width, depth, y: height + 0.2 });
+
+  const roof = new THREE.Mesh(
+    new THREE.ConeGeometry(Math.max(width, depth) * 0.62, 2, 4),
+    new THREE.MeshStandardMaterial({ color: 0x26313a, roughness: 0.72 })
+  );
+  roof.position.set(position.x, height + 1.05, position.z);
+  roof.rotation.y = Math.PI * 0.25;
+  roof.scale.z = depth > width ? 1.45 : 0.5;
+  roof.castShadow = true;
+  courtyardRoot.add(roof);
+
+  if (hasDoor) {
+    const door = new THREE.Mesh(new THREE.BoxGeometry(3.6, 3.2, 0.18), new THREE.MeshStandardMaterial({ color: 0x432016 }));
+    door.position.set(position.x, 1.6, position.z + depth / 2 + 0.1);
+    courtyardRoot.add(door);
+  }
+}
+
+function addGiantTree(id, position, leafColor) {
   const group = new THREE.Group();
-  const roadMaterial = new THREE.MeshStandardMaterial({ color: 0x30373d, roughness: 0.82 });
-  const sidewalkMaterial = new THREE.MeshStandardMaterial({ color: 0x9da4a7, roughness: 0.78 });
-  const windowMaterial = new THREE.MeshStandardMaterial({
-    color: 0xaee5ff,
-    emissive: 0xffd29b,
-    emissiveIntensity: 1.25,
-    roughness: 0.22,
-    toneMapped: false
-  });
-  const buildingMaterials = [
-    new THREE.MeshStandardMaterial({ color: 0x6f7d88, roughness: 0.68 }),
-    new THREE.MeshStandardMaterial({ color: 0xa36f5d, roughness: 0.72 }),
-    new THREE.MeshStandardMaterial({ color: 0x7a8d75, roughness: 0.74 }),
-    new THREE.MeshStandardMaterial({ color: 0x918474, roughness: 0.7 })
+  group.position.copy(position);
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.4, 2.1, 19, 18),
+    new THREE.MeshStandardMaterial({ color: 0x6b432b, roughness: 0.82 })
+  );
+  trunk.position.y = 9.5;
+  trunk.castShadow = true;
+  group.add(trunk);
+
+  const leaves = new THREE.Group();
+  const leafMat = new THREE.MeshStandardMaterial({ color: leafColor, roughness: 0.8 });
+  for (let i = 0; i < 9; i += 1) {
+    const crown = new THREE.Mesh(new THREE.SphereGeometry(4.5 - (i % 3) * 0.5, 18, 14), leafMat);
+    crown.position.set(Math.cos(i * 1.7) * 2.6, 18 + Math.sin(i) * 1.2, Math.sin(i * 1.3) * 2.6);
+    crown.castShadow = true;
+    leaves.add(crown);
+  }
+  group.add(leaves);
+
+  const topPad = new THREE.Mesh(
+    new THREE.CylinderGeometry(3.2, 3.4, 0.35, 24),
+    new THREE.MeshStandardMaterial({ color: 0x5b3927, roughness: 0.75 })
+  );
+  topPad.position.y = 18.2;
+  topPad.castShadow = true;
+  group.add(topPad);
+
+  courtyardRoot.add(group);
+  world.platforms.push({ x: position.x, z: position.z, width: 6.8, depth: 6.8, y: 18.45, id });
+  return { id, group, position, topY: 18.45 };
+}
+
+function addLadder(group, offset, height) {
+  const mat = new THREE.MeshStandardMaterial({ color: 0xd0a16b, roughness: 0.72 });
+  for (let i = 0; i < 2; i += 1) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.14, height, 0.14), mat);
+    rail.position.set(offset.x, offset.y + height / 2, i === 0 ? -0.42 : 0.42);
+    group.add(rail);
+  }
+  for (let y = 0; y < height; y += 0.8) {
+    const step = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.12, 1.05), mat);
+    step.position.set(offset.x, offset.y + y, 0);
+    group.add(step);
+  }
+}
+
+function addParkourRoute() {
+  const platforms = [
+    [-24, 4.9, 13, 4.5, 2.3],
+    [-29, 7.2, 20, 4, 2],
+    [-25, 9.8, 28, 4, 2],
+    [-20, 12.4, 30, 4, 2],
+    [-17.5, 15.4, 27, 4, 2]
   ];
+  platforms.forEach(([x, y, z, w, d]) => {
+    const p = new THREE.Mesh(new THREE.BoxGeometry(w, 0.28, d), new THREE.MeshStandardMaterial({ color: 0xb68b5a }));
+    p.position.set(x, y, z);
+    p.castShadow = true;
+    p.receiveShadow = true;
+    courtyardRoot.add(p);
+    world.platforms.push({ x, z, width: w, depth: d, y: y + 0.16 });
+  });
+}
 
-  for (let i = -7; i <= 7; i += 1) {
-    const street = new THREE.Mesh(new THREE.BoxGeometry(162, 0.06, 4.2), roadMaterial);
-    street.position.set(0, 0.04, i * 9);
-    street.receiveShadow = true;
-    group.add(street);
-
-    const crossStreet = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.06, 162), roadMaterial);
-    crossStreet.position.set(i * 9, 0.045, 0);
-    crossStreet.receiveShadow = true;
-    group.add(crossStreet);
+function addCloudLayer() {
+  const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.72, depthWrite: false });
+  for (let i = 0; i < 22; i += 1) {
+    const cloud = new THREE.Mesh(new THREE.SphereGeometry(2 + (i % 4) * 0.5, 14, 10), cloudMat);
+    cloud.position.set(-38 + i * 3.8, 25 + Math.sin(i) * 2, -24 + Math.cos(i * 1.4) * 16);
+    cloud.scale.x = 1.9;
+    courtyardRoot.add(cloud);
   }
+}
 
-  for (let x = -72; x <= 72; x += 6.5) {
-    for (let z = -72; z <= 72; z += 6.5) {
-      const nearStart = Math.hypot(x, z) < 5.8;
-      const nearPortal = Math.hypot(x, z) < 7.5;
-      const onRoad = Math.abs(x % 9) < 2.6 || Math.abs(z % 9) < 2.6;
-      if (nearStart || nearPortal || onRoad) continue;
+function addWindDisplay() {
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 3, 10), new THREE.MeshStandardMaterial({ color: 0x2d343a }));
+  base.position.set(1.5, 1.5, 9);
+  courtyardRoot.add(base);
+  world.windArrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(1.5, 3.3, 9), 3.3, 0x2f83ff, 0.7, 0.42);
+  courtyardRoot.add(world.windArrow);
+  window.setInterval(() => {
+    state.windIndex = (state.windIndex + 1) % winds.length;
+    const wind = winds[state.windIndex];
+    world.windArrow.setDirection(new THREE.Vector3(Math.cos(wind.angle), 0, -Math.sin(wind.angle)).normalize());
+    setStatus(`Wind: ${wind.name}${wind.helpful ? " - boat can be built" : ""}`);
+  }, 6500);
+}
 
-      const height = 2.2 + seededNoise(x, z) * 5.8;
-      const width = 2.2 + seededNoise(z, x + 3) * 1.3;
-      const depth = 2.1 + seededNoise(x - 2, z + 5) * 1.4;
-      const building = new THREE.Mesh(
-        new THREE.BoxGeometry(width, height, depth),
-        buildingMaterials[Math.floor(seededNoise(x + 11, z - 7) * buildingMaterials.length)]
-      );
-      building.position.set(x, height * 0.5, z);
-      building.castShadow = true;
-      building.receiveShadow = true;
-      group.add(building);
-
-      const cap = new THREE.Mesh(new THREE.BoxGeometry(width + 0.18, 0.12, depth + 0.18), sidewalkMaterial);
-      cap.position.set(x, height + 0.07, z);
-      cap.castShadow = true;
-      group.add(cap);
-
-      addWindowBands(group, x, z, width, depth, height, windowMaterial);
-      if (seededNoise(x - 5, z + 9) > 0.7) addBuildingLight(group, x, z, height);
-    }
-  }
-
-  const plaza = new THREE.Mesh(new THREE.CylinderGeometry(4.4, 4.4, 0.08, 40), sidewalkMaterial);
-  plaza.position.set(portalTrigger.position.x, 0.07, portalTrigger.position.z);
-  plaza.receiveShadow = true;
-  group.add(plaza);
-
+function createPortal(position) {
+  const group = new THREE.Group();
+  group.position.copy(position);
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(1.7, 0.18, 16, 60),
+    new THREE.MeshStandardMaterial({ color: 0x7bdcff, emissive: 0x1a98ff, emissiveIntensity: 1.2, toneMapped: false })
+  );
+  ring.rotation.y = Math.PI * 0.5;
+  group.add(ring);
+  const core = new THREE.Mesh(
+    new THREE.CircleGeometry(1.42, 48),
+    new THREE.MeshBasicMaterial({ color: 0x7d63ff, transparent: true, opacity: 0.55, side: THREE.DoubleSide })
+  );
+  core.rotation.y = Math.PI * 0.5;
+  group.add(core);
   return group;
 }
 
-function addBuildingLight(group, x, z, height) {
-  const bulb = new THREE.PointLight(0xffc66f, 0.7, 7.5, 1.8);
-  bulb.position.set(x, Math.min(height + 0.7, 6.5), z);
-  group.add(bulb);
+function buildSecondScene() {
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(60, 0.2, 60), new THREE.MeshStandardMaterial({ color: 0x38404b, roughness: 0.75 }));
+  floor.receiveShadow = true;
+  secondRoot.add(floor);
+  const marker = new THREE.Mesh(new THREE.TorusKnotGeometry(2, 0.18, 80, 10), new THREE.MeshStandardMaterial({ color: 0xffd36a, emissive: 0x5b3300, emissiveIntensity: 0.5 }));
+  marker.position.set(0, 4, -8);
+  secondRoot.add(marker);
 }
 
-function addWindowBands(group, x, z, width, depth, height, material) {
-  const rows = Math.max(1, Math.floor(height / 1.15));
-  for (let row = 1; row < rows; row += 1) {
-    const y = row * 0.9 + 0.25;
-    const front = new THREE.Mesh(new THREE.BoxGeometry(width * 0.7, 0.13, 0.035), material);
-    front.position.set(x, y, z + depth * 0.505);
-    group.add(front);
-
-    const side = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.13, depth * 0.7), material);
-    side.position.set(x + width * 0.505, y, z);
-    group.add(side);
-  }
-}
-
-function createSunAndSky() {
-  const sky = new THREE.Mesh(
-    new THREE.SphereGeometry(180, 40, 24),
-    new THREE.ShaderMaterial({
-      side: THREE.BackSide,
-      depthWrite: false,
-      uniforms: {
-        topColor: { value: new THREE.Color(0x6eb5ff) },
-        bottomColor: { value: new THREE.Color(0xf8dcc0) },
-        sunColor: { value: new THREE.Color(0xfff0b8) },
-        sunDirection: { value: new THREE.Vector3(-0.42, 0.34, -0.84).normalize() }
-      },
-      vertexShader: `
-        varying vec3 vWorldDirection;
-        void main() {
-          vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-          vWorldDirection = normalize(worldPosition.xyz);
-          gl_Position = projectionMatrix * viewMatrix * worldPosition;
-        }
-      `,
-      fragmentShader: `
-        uniform vec3 topColor;
-        uniform vec3 bottomColor;
-        uniform vec3 sunColor;
-        uniform vec3 sunDirection;
-        varying vec3 vWorldDirection;
-        void main() {
-          float horizon = smoothstep(-0.25, 0.85, vWorldDirection.y);
-          vec3 skyColor = mix(bottomColor, topColor, horizon);
-          float sunAmount = pow(max(dot(normalize(vWorldDirection), sunDirection), 0.0), 420.0);
-          float glowAmount = pow(max(dot(normalize(vWorldDirection), sunDirection), 0.0), 18.0);
-          gl_FragColor = vec4(skyColor + sunColor * sunAmount * 2.8 + sunColor * glowAmount * 0.22, 1.0);
-        }
-      `
-    })
+function createPlayer() {
+  const root = new THREE.Group();
+  const body = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.34, 0.82, 8, 16),
+    new THREE.MeshStandardMaterial({ color: 0x314b6b, roughness: 0.55 })
   );
-
-  const discMaterial = new THREE.MeshBasicMaterial({ color: 0xfff1a8, toneMapped: false });
-  const disc = new THREE.Mesh(new THREE.CircleGeometry(6.5, 48), discMaterial);
-  disc.position.set(44, 38, -96);
-  disc.lookAt(camera.position);
-
-  const glow = new THREE.PointLight(0xffdf9a, 7.5, 120, 2.2);
-  glow.position.copy(disc.position);
-
-  return { sky, disc, glow };
-}
-
-function createCityWater() {
-  const pool = createWaterBody(8.4, 5.2, 0x1a8fc4);
-  pool.group.position.set(-5.4, 0, 5.2);
-  waterRoot.add(pool.group);
-  waterZones.push({ world: "city", x: -5.4, z: 5.2, radius: 4.0, mesh: pool.surface, group: pool.group });
-}
-
-function createWaterBody(width, depth, color) {
-  const group = new THREE.Group();
-  const basin = new THREE.Mesh(
-    new THREE.CylinderGeometry(Math.max(width, depth) * 0.52, Math.max(width, depth) * 0.42, 0.75, 64),
-    new THREE.MeshStandardMaterial({
-      color: 0x06324d,
-      roughness: 0.88,
-      metalness: 0,
-      transparent: true,
-      opacity: 0.92
-    })
+  body.position.y = 0.95;
+  body.castShadow = true;
+  root.add(body);
+  const head = new THREE.Mesh(
+    new THREE.SphereGeometry(0.24, 18, 14),
+    new THREE.MeshStandardMaterial({ color: 0xd7b08c, roughness: 0.5 })
   );
-  basin.scale.z = depth / width;
-  basin.position.y = -0.32;
-  basin.receiveShadow = true;
-  group.add(basin);
-
-  const rim = new THREE.Mesh(
-    new THREE.TorusGeometry(Math.max(width, depth) * 0.49, 0.09, 10, 96),
-    new THREE.MeshStandardMaterial({
-      color: 0xc1e8ff,
-      roughness: 0.2,
-      metalness: 0.05,
-      emissive: 0x1e6f91,
-      emissiveIntensity: 0.18
-    })
-  );
-  rim.scale.z = depth / width;
-  rim.rotation.x = Math.PI * 0.5;
-  rim.position.y = 0.11;
-  group.add(rim);
-
-  const surface = createReflectiveWater(width, depth, color);
-  surface.position.y = 0.12;
-  surface.rotation.x = -Math.PI / 2;
-  group.add(surface);
-
-  return { group, surface };
-}
-
-function createReflectiveWater(width, depth, color) {
-  const geometry = new THREE.PlaneGeometry(width, depth, 96, 64);
-  const material = new THREE.MeshPhysicalMaterial({
-    color,
-    roughness: 0.012,
-    metalness: 0,
-    transmission: 0.18,
-    thickness: 1.15,
-    transparent: true,
-    opacity: 0.76,
-    envMap: reflectionTarget.texture,
-    envMapIntensity: 1.35,
-    clearcoat: 1,
-    clearcoatRoughness: 0.015,
-    ior: 1.333
-  });
-
-  material.onBeforeCompile = (shader) => {
-    shader.uniforms.uTime = { value: 0 };
-    material.userData.shader = shader;
-    shader.vertexShader = shader.vertexShader.replace(
-      "#include <common>",
-      "#include <common>\nuniform float uTime;"
-    );
-    shader.vertexShader = shader.vertexShader.replace(
-      "#include <begin_vertex>",
-      `vec3 transformed = vec3(position);
-       float waveA = sin(position.x * 3.7 + uTime * 1.45) * 0.035;
-       float waveB = cos(position.y * 5.1 + uTime * 1.9) * 0.022;
-       transformed.z += waveA + waveB;`
-    );
-    shader.fragmentShader = shader.fragmentShader.replace(
-      "#include <color_fragment>",
-      `#include <color_fragment>
-       float depthGradient = smoothstep(0.12, 0.88, length(vUv - 0.5) * 1.65);
-       vec3 shallowWater = vec3(0.22, 0.76, 0.96);
-       vec3 deepWater = vec3(0.01, 0.16, 0.34);
-       diffuseColor.rgb = mix(deepWater, shallowWater, depthGradient);
-       diffuseColor.rgb += vec3(0.08, 0.18, 0.22) * (1.0 - depthGradient);`
-    );
-  };
-
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.receiveShadow = true;
-  mesh.userData.isWater = true;
-  return mesh;
-}
-
-function createIslandWater() {
-  const pool = createWaterBody(5.8, 3.7, 0x1daee8);
-  pool.group.position.set(-1.6, 0.01, 0.8);
-  mountainRoot.add(pool.group);
-  waterZones.push({ world: "mountain", x: -1.6, z: 0.8, radius: 2.65, mesh: pool.surface, group: pool.group });
-}
-
-function createSplash(position) {
-  const ring = new THREE.Mesh(
-    new THREE.RingGeometry(0.28, 0.34, 36),
-    new THREE.MeshBasicMaterial({ color: 0xbdecff, transparent: true, opacity: 0.9, side: THREE.DoubleSide, toneMapped: false })
-  );
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.set(position.x, 0.16, position.z);
-  ring.userData.life = 0;
-  splashRings.push(ring);
-  scene.add(ring);
-}
-
-function seededNoise(x, z) {
-  const value = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453;
-  return value - Math.floor(value);
-}
-
-function preparePortal(object) {
-  object.traverse((child) => {
-    if (child.isMesh) {
-      child.castShadow = true;
-      child.receiveShadow = true;
-      if (child.material) {
-        const materials = Array.isArray(child.material) ? child.material : [child.material];
-        materials.forEach((material) => {
-          const materialName = (material.name || "").toLowerCase();
-          material.transparent = true;
-          material.side = THREE.DoubleSide;
-          material.depthWrite = false;
-          if (materialName.includes("inner") || materialName.includes("portal")) {
-            material.map = portalEmissionTexture;
-            material.emissive = new THREE.Color(0x7fd9ff);
-            material.emissiveMap = portalEmissionTexture;
-            material.emissiveIntensity = 2.4;
-            material.alphaMap = portalOpacityTexture;
-            material.opacity = 0.9;
-          } else {
-            material.emissive = new THREE.Color(0x213642);
-            material.emissiveIntensity = 0.35;
-          }
-          material.needsUpdate = true;
-        });
-      }
-    }
-  });
-
-  const box = new THREE.Box3().setFromObject(object);
-  const size = new THREE.Vector3();
-  const center = new THREE.Vector3();
-  box.getSize(size);
-  box.getCenter(center);
-
-  const targetHeight = 3.1;
-  object.scale.multiplyScalar(targetHeight / Math.max(size.y, 0.001));
-
-  const scaledBox = new THREE.Box3().setFromObject(object);
-  const scaledCenter = new THREE.Vector3();
-  scaledBox.getCenter(scaledCenter);
-  object.position.x -= scaledCenter.x;
-  object.position.z -= scaledCenter.z;
-  object.position.y -= scaledBox.min.y;
-  standPortalUpright(object);
-  object.rotation.y = Math.PI * 0.15;
-  settleObjectOnGround(object, -2.2);
-  object.position.add(portalTrigger.position);
-}
-
-function prepareMountainScene(object) {
-  object.traverse((child) => {
-    if (child.isMesh) {
-      child.castShadow = true;
-      child.receiveShadow = true;
-      if (child.material) {
-        const materials = Array.isArray(child.material) ? child.material : [child.material];
-        materials.forEach((material) => {
-          material.side = THREE.DoubleSide;
-          material.map = getTempleTexture(material.name, child.name);
-          material.roughness = Math.max(material.roughness ?? 0.72, 0.72);
-          if ((material.name || "").toLowerCase().includes("foliage")) {
-            material.transparent = true;
-            material.alphaTest = 0.35;
-            material.side = THREE.DoubleSide;
-          }
-          material.needsUpdate = true;
-        });
-      }
-    }
-  });
-
-  const box = new THREE.Box3().setFromObject(object);
-  const size = new THREE.Vector3();
-  const center = new THREE.Vector3();
-  box.getSize(size);
-  box.getCenter(center);
-
-  const targetWidth = 38;
-  object.scale.multiplyScalar(targetWidth / Math.max(size.x, size.z, 0.001));
-
-  const scaledBox = new THREE.Box3().setFromObject(object);
-  const scaledCenter = new THREE.Vector3();
-  scaledBox.getCenter(scaledCenter);
-  object.position.x -= scaledCenter.x;
-  object.position.z -= scaledCenter.z;
-  object.position.y -= scaledBox.min.y;
-  object.rotation.y = Math.PI * 0.15;
-}
-
-function createFloatingIslandScene() {
-  const island = new THREE.Group();
-  const topMaterial = new THREE.MeshStandardMaterial({
-    map: islandTexture,
-    color: 0xa7d98b,
-    roughness: 0.86
-  });
-  const sideMaterial = new THREE.MeshStandardMaterial({
-    color: 0x7d6a56,
-    roughness: 0.92
-  });
-  const undersideMaterial = new THREE.MeshStandardMaterial({
-    color: 0x5f5145,
-    roughness: 0.96
-  });
-
-  const top = new THREE.Mesh(new THREE.CylinderGeometry(18, 16.2, 1.1, 48), topMaterial);
-  top.position.y = -0.55;
-  top.receiveShadow = true;
-  top.castShadow = true;
-  island.add(top);
-
-  const underside = new THREE.Mesh(new THREE.ConeGeometry(14.8, 7.2, 48), undersideMaterial);
-  underside.position.y = -4.7;
-  underside.rotation.y = Math.PI / 48;
-  underside.castShadow = true;
-  island.add(underside);
-
-  const rim = new THREE.Mesh(new THREE.TorusGeometry(16.7, 0.34, 10, 64), sideMaterial);
-  rim.position.y = 0.06;
-  rim.rotation.x = Math.PI * 0.5;
-  rim.castShadow = true;
-  island.add(rim);
-
-  const path = new THREE.Mesh(
-    new THREE.RingGeometry(2.3, 10.6, 64, 1, Math.PI * 0.16, Math.PI * 1.28),
-    new THREE.MeshStandardMaterial({ color: 0xcab88a, roughness: 0.88 })
-  );
-  path.rotation.x = -Math.PI * 0.5;
-  path.position.y = 0.03;
-  path.receiveShadow = true;
-  island.add(path);
-
-  mountainRoot.add(island);
-  createIslandWater();
-  createAnimatedTrees();
-  createPeaches();
-  mountainColliders.length = 0;
-  islandAssets.island = true;
-  updateIslandReadyState();
-}
-
-function prepareClouds(object) {
-  const material = new THREE.MeshStandardMaterial({
-    map: cloudTexture,
-    color: 0xffffff,
-    roughness: 0.95,
-    transparent: true,
-    opacity: 0.86,
-    depthWrite: false
-  });
-
-  object.traverse((child) => {
-    if (child.isMesh) {
-      child.material = material;
-      child.castShadow = false;
-      child.receiveShadow = false;
-    }
-  });
-
-  const cloudPositions = [
-    [-10, 8.8, -7, 7.5],
-    [7, 10.2, -10, 6.5],
-    [2, 8.1, 9, 5.5],
-    [-7, 9.4, 8, 6.2]
-  ];
-
-  cloudPositions.forEach(([x, y, z, scale], index) => {
-    const cloud = object.clone(true);
-    cloud.position.set(x, y, z);
-    cloud.scale.setScalar(scale);
-    cloud.rotation.y = index * 0.8;
-    mountainRoot.add(cloud);
-  });
-}
-
-function createAnimatedTrees() {
-  const treePositions = [
-    [-6.8, 0, -4.6, 0.92],
-    [-3.6, 0, 5.4, 1.12],
-    [5.5, 0, 4.5, 0.9],
-    [7.6, 0, -2.5, 1.02],
-    [0.8, 0, -7.2, 0.84]
-  ];
-
-  treePositions.forEach(([x, y, z, scale], index) => {
-    const tree = createTree(scale);
-    tree.position.set(x, y, z);
-    tree.rotation.y = index * 1.7;
-    tree.userData.phase = index * 0.83;
-    animatedTrees.push(tree);
-    mountainRoot.add(tree);
-  });
-}
-
-function createTree(scale = 1) {
-  const tree = new THREE.Group();
-  const trunk = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.028, 0.045, 2.05, 10),
-    new THREE.MeshStandardMaterial({ map: treeBarkTexture, roughness: 0.82 })
-  );
-  trunk.position.y = 1.03;
-  trunk.castShadow = true;
-  trunk.receiveShadow = true;
-  tree.add(trunk);
-
-  const leafMaterial = new THREE.MeshStandardMaterial({
-    map: treeLeafTexture,
-    alphaMap: treeLeafOpacityTexture,
-    transparent: true,
-    alphaTest: 0.28,
-    side: THREE.DoubleSide,
-    roughness: 0.76
-  });
-
-  for (let i = 0; i < 7; i += 1) {
-    const leaves = new THREE.Mesh(new THREE.PlaneGeometry(1.55, 1.35), leafMaterial);
-    leaves.position.set(0, 1.75 + i * 0.11, 0);
-    leaves.rotation.y = (Math.PI / 5) * i;
-    leaves.rotation.x = -0.28;
-    leaves.castShadow = true;
-    tree.add(leaves);
-  }
-
-  tree.scale.setScalar(scale);
-  return tree;
-}
-
-function createPeaches() {
-  const peachMaterial = new THREE.MeshStandardMaterial({
-    map: peachAlbedoTexture,
-    normalMap: peachNormalTexture,
-    roughnessMap: peachRoughnessTexture,
-    roughness: 0.72,
-    color: 0xffd0a8
-  });
-  const peachGeometry = new THREE.SphereGeometry(0.18, 24, 18);
-  const peachPositions = [
-    [-2.2, 0.2, 3.2],
-    [1.4, 0.2, -2.9],
-    [4.8, 0.2, 2.1],
-    [-5.4, 0.2, -1.4],
-    [0.2, 0.2, 6.2]
-  ];
-
-  peachPositions.forEach((position, index) => {
-    const peach = new THREE.Mesh(peachGeometry, peachMaterial);
-    peach.position.set(...position);
-    peach.scale.set(1, 0.92, 1);
-    peach.castShadow = true;
-    peach.userData.phase = index * 0.9;
-    peaches.push(peach);
-    mountainRoot.add(peach);
-  });
-}
-
-function loadTexture(url, useColorSpace = true) {
-  const texture = textureLoader.load(url);
-  if (useColorSpace) texture.colorSpace = THREE.SRGBColorSpace;
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  return texture;
-}
-
-function getTempleTexture(materialName = "", meshName = "") {
-  const name = `${materialName} ${meshName}`.toLowerCase();
-  if (name.includes("sky")) return templeTextures.sky;
-  if (name.includes("road")) return templeTextures.road;
-  if (name.includes("grass")) return templeTextures.grass;
-  if (name.includes("gravel") || name.includes("ground")) return templeTextures.groundStone;
-  if (name.includes("snowrock") || name.includes("rockmix")) return templeTextures.snowRock;
-  if (name.includes("snow")) return templeTextures.snow;
-  if (name.includes("stone") && name.includes("base")) return templeTextures.baseWall;
-  if (name.includes("stone")) return templeTextures.stone;
-  if (name.includes("wall")) return templeTextures.wall;
-  if (name.includes("wood") || name.includes("door") || name.includes("pole")) return templeTextures.wood;
-  if (name.includes("roof")) return templeTextures.roof;
-  if (name.includes("foliage") || name.includes("flag") || name.includes("plane")) return templeTextures.foliage;
-  if (name.includes("temple")) return templeTextures.wall;
-  return templeTextures.grass;
-}
-
-function standPortalUpright(object) {
-  object.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(object);
-  const size = new THREE.Vector3();
-  box.getSize(size);
-
-  if (size.y < Math.max(size.x, size.z) * 0.55) {
-    object.rotation.x = -Math.PI * 0.5;
-    object.updateMatrixWorld(true);
-    const uprightBox = new THREE.Box3().setFromObject(object);
-    const uprightCenter = new THREE.Vector3();
-    uprightBox.getCenter(uprightCenter);
-    object.position.x -= uprightCenter.x;
-    object.position.z -= uprightCenter.z;
-    object.position.y -= uprightBox.min.y;
-  }
-}
-
-function settleObjectOnGround(object, yOffset = 0) {
-  object.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(object);
-  object.position.y += yOffset - box.min.y;
-}
-
-function buildCityColliders(object) {
-  cityColliders.length = 0;
-  object.updateMatrixWorld(true);
-
-  object.traverse((child) => {
-    if (!child.isMesh || !child.geometry) return;
-
-    const box = new THREE.Box3().setFromObject(child);
-    const size = new THREE.Vector3();
-    box.getSize(size);
-
-    const isTallEnough = size.y > 0.42 && box.max.y > 0.48;
-    const isWorthBlocking = Math.max(size.x, size.z) > 0.18;
-    const isWholeMap = size.x > 42 && size.z > 42;
-    const isRoadLikeSlab = size.y < 0.8 && Math.max(size.x, size.z) > 18;
-
-    if (isTallEnough && isWorthBlocking && !isWholeMap && !isRoadLikeSlab) {
-      cityColliders.push(box.clone().expandByScalar(0.08));
-    }
-  });
-}
-
-function makeCheckerTexture() {
-  const size = 512;
-  const squares = 8;
-  const squareSize = size / squares;
-  const checkerCanvas = document.createElement("canvas");
-  checkerCanvas.width = size;
-  checkerCanvas.height = size;
-  const ctx = checkerCanvas.getContext("2d");
-
-  for (let y = 0; y < squares; y += 1) {
-    for (let x = 0; x < squares; x += 1) {
-      ctx.fillStyle = (x + y) % 2 === 0 ? "#e8e1d2" : "#1f2830";
-      ctx.fillRect(x * squareSize, y * squareSize, squareSize, squareSize);
-    }
-  }
-
-  ctx.strokeStyle = "rgba(240, 179, 90, 0.24)";
-  ctx.lineWidth = 3;
-  for (let i = 0; i <= squares; i += 1) {
-    const p = i * squareSize;
-    ctx.beginPath();
-    ctx.moveTo(p, 0);
-    ctx.lineTo(p, size);
-    ctx.moveTo(0, p);
-    ctx.lineTo(size, p);
-    ctx.stroke();
-  }
-
-  return new THREE.CanvasTexture(checkerCanvas);
+  head.position.y = 1.62;
+  head.castShadow = true;
+  root.add(head);
+  root.position.set(0, 0, 0);
+  return { root, body, head };
 }
 
 function animate() {
-  const delta = clock.getDelta();
-  const isMoving = updateMovement(delta);
-  updateJump(delta);
-  updateWater(delta);
-  updateIslandAnimations(delta);
-
-  if (mixer) mixer.update(delta);
-  if (portalMixer && portalRoot.visible) portalMixer.update(delta);
-  cars.forEach((car) => {
-    if (car.doorMixer) car.doorMixer.update(delta);
-  });
-  if (walkAction) {
-    walkAction.timeScale = isMoving && !activeCar ? walkCycleSpeed * getRunMultiplier() : 0;
+  const delta = Math.min(clock.getDelta(), 0.05);
+  if (state.started) {
+    updateMovement(delta);
+    checkAbilityZones();
+    checkPortal();
+    updateCamera(delta);
   }
-
-  checkPortalEntry();
-  checkPeachPickups();
-  updatePeachGuideArrow();
-  updateCarHint();
-  updateCamera(delta);
   controls.update();
-  updateReflections(delta);
-  renderWithRealismPass(delta, isMoving);
+  renderer.render(scene, camera);
 }
 
 function updateMovement(delta) {
-  if (!man || isWorldTransitioning) return false;
-  if (activeCar) return updateVehicleMovement(delta);
+  const targetY = getGroundY(player.root.position.x, player.root.position.z);
+  const grounded = player.root.position.y <= targetY + 0.04;
+  if (grounded) {
+    player.root.position.y = targetY;
+    state.velocityY = Math.max(0, state.velocityY);
+  }
 
-  moveDirection.set(0, 0, 0);
+  if (keys.has(" ") && grounded) state.velocityY = 6.1;
+  state.velocityY -= 14.5 * delta;
 
-  const isTurningLeft = keys.has("a") || keys.has("arrowleft");
-  const isTurningRight = keys.has("d") || keys.has("arrowright");
-  const isForwardPressed = keys.has("w") || keys.has("arrowup");
+  move.set(0, 0, 0);
+  if (keys.has("w") || keys.has("arrowup")) move.z -= 1;
+  if (keys.has("s") || keys.has("arrowdown")) move.z += 1;
+  if (keys.has("a") || keys.has("arrowleft")) move.x -= 1;
+  if (keys.has("d") || keys.has("arrowright")) move.x += 1;
 
-  if (isTurningLeft) track.rotation.y += delta * 2.4;
-  if (isTurningRight) track.rotation.y -= delta * 2.4;
+  if (move.lengthSq() > 0) {
+    move.normalize();
+    camera.getWorldDirection(forward);
+    forward.y = 0;
+    forward.normalize();
+    right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+    temp.copy(forward).multiplyScalar(-move.z).addScaledVector(right, move.x).normalize();
+    const speed = (keys.has("shift") ? 8.5 : 4.8) * (state.canTeleport ? 0.75 : 1);
+    player.root.position.addScaledVector(temp, speed * delta);
+    player.root.rotation.y = Math.atan2(temp.x, temp.z);
+  }
 
-  movementForward.set(Math.cos(track.rotation.y), 0, -Math.sin(track.rotation.y)).normalize();
-  if (isForwardPressed || isTurningLeft || isTurningRight) moveDirection.copy(movementForward);
+  player.root.position.y += state.velocityY * delta;
+  const newGroundY = getGroundY(player.root.position.x, player.root.position.z);
+  if (player.root.position.y < newGroundY) {
+    player.root.position.y = newGroundY;
+    state.velocityY = 0;
+  }
 
-  if (moveDirection.lengthSq() > 0.001) {
-    mouseControl.active = false;
-  } else if (mouseControl.active && mouseControl.pointerDown) {
-    mouseDirection.copy(mouseControl.target).sub(track.position);
-    mouseDirection.y = 0;
-    if (mouseDirection.lengthSq() > 0.01) {
-      moveDirection.copy(mouseDirection);
+  const bounds = state.world === "courtyard" ? world.bounds : 28;
+  player.root.position.x = THREE.MathUtils.clamp(player.root.position.x, -bounds, bounds);
+  player.root.position.z = THREE.MathUtils.clamp(player.root.position.z, -bounds, bounds);
+}
+
+function getGroundY(x, z) {
+  let y = 0;
+  if (state.world !== "courtyard") return 0;
+  world.platforms.forEach((platform) => {
+    const insideX = Math.abs(x - platform.x) <= platform.width / 2;
+    const insideZ = Math.abs(z - platform.z) <= platform.depth / 2;
+    if (insideX && insideZ && player.root.position.y >= platform.y - 1.2) y = Math.max(y, platform.y);
+  });
+  world.buildables.forEach((block) => {
+    const pos = block.position;
+    if (Math.abs(x - pos.x) <= 0.8 && Math.abs(z - pos.z) <= 0.8 && player.root.position.y >= pos.y + 0.45) {
+      y = Math.max(y, pos.y + 0.8);
+    }
+  });
+  return y;
+}
+
+function interact() {
+  if (!state.started || state.world !== "courtyard") return;
+
+  const p = player.root.position;
+  const first = world.trees.first.position;
+  const second = world.trees.second.position;
+  const third = world.trees.third.position;
+
+  if (horizontalDistance(p, first) < 4.2 && p.y < 5) {
+    player.root.position.set(first.x, 24.5, first.z);
+    state.velocityY = 0;
+    state.inCloudView = true;
+    unlockTeleport();
+    setStatus("You climbed above the clouds. Teleport unlocked.");
+    return;
+  }
+
+  if (!state.boatBuilt && horizontalDistance(p, new THREE.Vector3(3.7, 0, 11.8)) < 4) {
+    const wind = winds[state.windIndex];
+    if (wind.helpful) {
+      buildBoat();
+      setStatus("Boat built. Cross the lake to the second tree.");
     } else {
-      mouseControl.active = false;
+      setStatus(`Wind is ${wind.name}. Wait for east wind to build the boat.`);
     }
-  }
-
-  if (moveDirection.lengthSq() < 0.001) return false;
-
-  moveDirection.normalize();
-  const waterDrag = isInWater ? 0.68 : 1;
-  movePlayer(moveDirection, delta * (1.7 + strideSpeed * 1.5) * getRunMultiplier() * waterDrag);
-
-  const facing = Math.atan2(-moveDirection.z, moveDirection.x);
-  let deltaAngle = facing - track.rotation.y;
-  deltaAngle = Math.atan2(Math.sin(deltaAngle), Math.cos(deltaAngle));
-  track.rotation.y += deltaAngle * Math.min(1, delta * 12);
-  return true;
-}
-
-function updateVehicleMovement(delta) {
-  const forwardPressed = keys.has("w") || keys.has("arrowup");
-  const turningLeft = keys.has("a") || keys.has("arrowleft");
-  const turningRight = keys.has("d") || keys.has("arrowright");
-  const speedLimit = activeCar.maxSpeed * getRunMultiplier();
-
-  if (forwardPressed) {
-    activeCar.speed = Math.min(speedLimit, activeCar.speed + activeCar.acceleration * delta);
-  } else {
-    activeCar.speed *= Math.max(0, 1 - delta * 2.6);
-  }
-
-  const steering = (turningLeft ? 1 : 0) - (turningRight ? 1 : 0);
-  if (Math.abs(activeCar.speed) > 0.05 && steering !== 0) {
-    activeCar.root.rotation.y += steering * activeCar.turnSpeed * delta * THREE.MathUtils.clamp(activeCar.speed / activeCar.maxSpeed, 0.25, 1);
-  }
-
-  movementForward.set(Math.cos(activeCar.root.rotation.y), 0, -Math.sin(activeCar.root.rotation.y)).normalize();
-  candidatePosition.copy(activeCar.root.position).addScaledVector(movementForward, activeCar.speed * delta);
-
-  if (canStandAt(candidatePosition)) {
-    activeCar.root.position.copy(candidatePosition);
-  } else {
-    activeCar.speed = 0;
-  }
-
-  const boundsRadius = worldSettings.city.boundsRadius;
-  const distanceFromCenter = Math.hypot(activeCar.root.position.x, activeCar.root.position.z);
-  if (distanceFromCenter > boundsRadius) {
-    activeCar.root.position.x *= boundsRadius / distanceFromCenter;
-    activeCar.root.position.z *= boundsRadius / distanceFromCenter;
-    activeCar.speed *= 0.25;
-  }
-
-  track.position.copy(activeCar.root.position);
-  track.rotation.y = activeCar.root.rotation.y;
-  return activeCar.speed > 0.15 || steering !== 0;
-}
-
-function updateCarHint() {
-  nearestCar = null;
-  if (activeWorld !== "city" || activeCar || isWorldTransitioning) return;
-
-  let bestDistance = Infinity;
-  cars.forEach((car) => {
-    const distance = car.root.position.distanceTo(track.position);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      nearestCar = car;
-    }
-  });
-
-  if (nearestCar && bestDistance < 3.2) {
-    statusEl.textContent = `Press F to drive ${nearestCar.name}`;
-    statusEl.dataset.ready = "false";
-    window.clearTimeout(carHintTimer);
-    carHintTimer = window.setTimeout(() => {
-      if (!activeCar) statusEl.dataset.ready = "true";
-    }, 500);
-  }
-}
-
-function toggleCarMode() {
-  if (isWorldTransitioning || activeWorld !== "city") return;
-  if (activeCar) {
-    exitCar();
-    return;
-  }
-  updateCarHint();
-  if (!nearestCar) return;
-  enterCar(nearestCar);
-}
-
-function enterCar(car) {
-  activeCar = car;
-  activeCar.speed = 0;
-  keys.clear();
-  mouseControl.active = false;
-  mouseControl.pointerDown = false;
-  if (man) man.visible = false;
-  playDoorAnimation(activeCar, "open");
-  track.position.copy(activeCar.root.position);
-  track.rotation.y = activeCar.root.rotation.y;
-  statusEl.textContent = `Driving ${activeCar.name}`;
-  statusEl.dataset.ready = "false";
-}
-
-function exitCar() {
-  const car = activeCar;
-  activeCar = null;
-  keys.clear();
-  playDoorAnimation(car, "close");
-  movementForward.set(Math.cos(car.root.rotation.y + Math.PI * 0.5), 0, -Math.sin(car.root.rotation.y + Math.PI * 0.5)).normalize();
-  track.position.copy(car.root.position).addScaledVector(movementForward, 2.2);
-  track.rotation.y = car.root.rotation.y;
-  if (man) man.visible = true;
-  statusEl.textContent = "On foot";
-  window.setTimeout(() => {
-    statusEl.dataset.ready = "true";
-  }, 800);
-}
-
-function playDoorAnimation(car, mode) {
-  if (!car || !car.doorOpenAction || !car.doorCloseAction) return;
-  const action = mode === "open" ? car.doorOpenAction : car.doorCloseAction;
-  action.reset();
-  action.timeScale = 1;
-  action.play();
-}
-
-function updateWater(delta) {
-  const time = clock.elapsedTime;
-  waterZones.forEach((zone) => {
-    const shader = zone.mesh.material.userData.shader;
-    if (shader) shader.uniforms.uTime.value = time;
-    zone.mesh.material.envMapIntensity = activeWorld === zone.world ? 1.15 : 0.75;
-  });
-
-  const currentZone = waterZones.find((zone) => {
-    if (zone.world !== activeWorld) return false;
-    const dx = track.position.x - zone.x;
-    const dz = track.position.z - zone.z;
-    return dx * dx + dz * dz < zone.radius * zone.radius;
-  });
-
-  isInWater = Boolean(currentZone);
-
-  if (currentZone && !wasInWater) {
-    createSplash(track.position);
-    statusEl.textContent = jumpOffset > 0.05 ? "Splash" : "Water";
-    statusEl.dataset.ready = "false";
-    window.clearTimeout(pickupMessageTimer);
-    pickupMessageTimer = window.setTimeout(() => {
-      statusEl.dataset.ready = "true";
-    }, 1000);
-  }
-  wasInWater = isInWater;
-
-  for (let i = splashRings.length - 1; i >= 0; i -= 1) {
-    const ring = splashRings[i];
-    ring.userData.life += delta;
-    const age = ring.userData.life;
-    ring.scale.setScalar(1 + age * 3.8);
-    ring.material.opacity = Math.max(0, 0.9 - age * 1.35);
-    if (ring.material.opacity <= 0) {
-      scene.remove(ring);
-      ring.geometry.dispose();
-      ring.material.dispose();
-      splashRings.splice(i, 1);
-    }
-  }
-}
-
-function updateReflections(delta) {
-  reflectionTimer += delta;
-  if (reflectionTimer < 0.22) return;
-  reflectionTimer = 0;
-
-  const visibleWater = waterZones.find((zone) => zone.world === activeWorld);
-  if (!visibleWater) return;
-
-  reflectionCamera.position.set(track.position.x, Math.max(1.4, track.position.y + 1.8), track.position.z);
-  waterZones.forEach((zone) => {
-    zone.mesh.visible = false;
-  });
-  reflectionCamera.update(renderer, scene);
-  waterZones.forEach((zone) => {
-    zone.mesh.visible = zone.world === activeWorld;
-  });
-}
-
-function renderWithRealismPass(delta, isMoving) {
-  const cameraSpeed = desiredCameraPosition.distanceTo(camera.position) / Math.max(delta, 0.001);
-  postMaterial.uniforms.motionStrength.value = THREE.MathUtils.clamp((isMoving ? 0.18 : 0.08) + cameraSpeed * 0.012, 0.08, 0.34);
-  postMaterial.uniforms.blurStrength.value = THREE.MathUtils.clamp(isMoving ? 0.46 : 0.34, 0.18, 0.55);
-  postMaterial.uniforms.focusDistance.value = activeWorld === "mountain" ? 0.43 : 0.39;
-
-  renderer.setRenderTarget(sceneTarget);
-  renderer.render(scene, camera);
-  renderer.setRenderTarget(null);
-
-  if (!hasHistoryFrame) {
-    copyMaterial.map = sceneTarget.texture;
-    renderer.setRenderTarget(historyTarget);
-    renderer.render(copyScene, postCamera);
-    renderer.setRenderTarget(null);
-    hasHistoryFrame = true;
-  }
-
-  renderer.render(postScene, postCamera);
-
-  copyMaterial.map = sceneTarget.texture;
-  renderer.setRenderTarget(historyTarget);
-  renderer.render(copyScene, postCamera);
-  renderer.setRenderTarget(null);
-}
-
-function getRunMultiplier() {
-  return keys.has("shift") ? runMultiplier : 1;
-}
-
-function updateJump(delta) {
-  if (jumpOffset <= 0 && verticalVelocity <= 0) {
-    jumpOffset = 0;
-    verticalVelocity = 0;
-    track.position.y = 0;
     return;
   }
 
-  verticalVelocity -= jumpSettings.gravity * delta;
-  jumpOffset = Math.max(0, jumpOffset + verticalVelocity * delta);
-  if (jumpOffset === 0) verticalVelocity = 0;
-  track.position.y = jumpOffset;
+  if (horizontalDistance(p, second) < 4.6) {
+    unlockTelescope();
+    setStatus("Second tree reached. Telescope unlocked. Press Q.");
+    return;
+  }
+
+  if (horizontalDistance(p, third) < 4.4 && p.y > 15) {
+    unlockBuildPower();
+    setStatus("Third tree top reached. Build/destruct unlocked.");
+    return;
+  }
 }
 
-function updateIslandAnimations(delta) {
-  if (!mountainRoot.visible) return;
-  const time = clock.elapsedTime;
-
-  animatedTrees.forEach((tree) => {
-    const sway = Math.sin(time * 1.6 + tree.userData.phase) * 0.045;
-    tree.rotation.z = sway;
-  });
-
-  peaches.forEach((peach) => {
-    if (!peach.visible) return;
-    peach.rotation.y += delta * 1.4;
-    peach.position.y = 0.2 + Math.sin(time * 2 + peach.userData.phase) * 0.035;
-  });
+function checkAbilityZones() {
+  const p = player.root.position;
+  if (!state.canTeleport && horizontalDistance(p, world.trees.first.position) < 4.4 && p.y > 17.2) {
+    unlockTeleport();
+    setStatus("Teleport unlocked. Press T, then click to blink around.");
+  }
+  if (!state.hasTelescope && horizontalDistance(p, world.trees.second.position) < 4.4 && p.y > 17.2) {
+    unlockTelescope();
+    setStatus("Telescope unlocked. Press Q to zoom.");
+  }
+  if (!state.canBuild && horizontalDistance(p, world.trees.third.position) < 4.4 && p.y > 17.2) {
+    unlockBuildPower();
+    setStatus("Build/destruct unlocked. Press 1 or 2, then click.");
+  }
 }
 
-function setMouseTarget(event) {
-  const bounds = renderer.domElement.getBoundingClientRect();
-  pointer.x = ((event.clientX - bounds.left) / bounds.width) * 2 - 1;
-  pointer.y = -((event.clientY - bounds.top) / bounds.height) * 2 + 1;
+function unlockTeleport() {
+  state.canTeleport = true;
+}
+
+function unlockTelescope() {
+  state.hasTelescope = true;
+}
+
+function unlockBuildPower() {
+  state.canBuild = true;
+}
+
+function buildBoat() {
+  const boat = new THREE.Group();
+  const hull = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.55, 1.25), new THREE.MeshStandardMaterial({ color: 0x8b5a35, roughness: 0.72 }));
+  hull.castShadow = true;
+  boat.add(hull);
+  const sail = new THREE.Mesh(new THREE.ConeGeometry(0.9, 2.7, 3), new THREE.MeshStandardMaterial({ color: 0xf3ead2, roughness: 0.5, side: THREE.DoubleSide }));
+  sail.position.set(0, 1.55, 0);
+  sail.rotation.z = Math.PI * 0.5;
+  boat.add(sail);
+  boat.position.set(13, 0.42, 14);
+  courtyardRoot.add(boat);
+  world.boat = boat;
+  state.boatBuilt = true;
+
+  const bridge = new THREE.Mesh(new THREE.BoxGeometry(16, 0.18, 1.4), new THREE.MeshStandardMaterial({ color: 0x8b5a35, roughness: 0.7 }));
+  bridge.position.set(14.4, 0.23, 13.2);
+  bridge.castShadow = true;
+  bridge.receiveShadow = true;
+  courtyardRoot.add(bridge);
+  world.platforms.push({ x: 14.4, z: 13.2, width: 16, depth: 1.4, y: 0.36 });
+}
+
+function toggleTelescope() {
+  state.telescopeOn = !state.telescopeOn;
+  camera.fov = state.telescopeOn ? 18 : 48;
+  camera.updateProjectionMatrix();
+  setStatus(state.telescopeOn ? "Telescope on" : "Telescope off");
+}
+
+function handleBuildClick(event) {
+  setPointerTarget(event);
+  if (state.buildMode === "build") {
+    const block = new THREE.Mesh(
+      new THREE.BoxGeometry(1.4, 1.4, 1.4),
+      new THREE.MeshStandardMaterial({ color: 0xd4a24c, roughness: 0.68 })
+    );
+    block.position.set(
+      Math.round(pointerTarget.x / 1.4) * 1.4,
+      getGroundY(pointerTarget.x, pointerTarget.z) + 0.7,
+      Math.round(pointerTarget.z / 1.4) * 1.4
+    );
+    block.castShadow = true;
+    block.receiveShadow = true;
+    block.userData.buildable = true;
+    courtyardRoot.add(block);
+    world.buildables.push(block);
+    setStatus("Built a block");
+    return;
+  }
+
   raycaster.setFromCamera(pointer, camera);
-
-  if (raycaster.ray.intersectPlane(groundPlane, groundTarget)) {
-    mouseControl.target.copy(groundTarget);
-    mouseControl.active = mouseControl.pointerDown;
+  const hits = raycaster.intersectObjects(world.buildables, false);
+  if (hits.length > 0) {
+    const block = hits[0].object;
+    courtyardRoot.remove(block);
+    world.buildables = world.buildables.filter((item) => item !== block);
+    block.geometry.dispose();
+    block.material.dispose();
+    setStatus("Destroyed a block");
   }
 }
 
-function movePlayer(direction, distance) {
-  candidatePosition.copy(track.position).addScaledVector(direction, distance);
-
-  if (canStandAt(candidatePosition)) {
-    track.position.copy(candidatePosition);
-  } else {
-    xSlidePosition.copy(track.position);
-    xSlidePosition.x = candidatePosition.x;
-    zSlidePosition.copy(track.position);
-    zSlidePosition.z = candidatePosition.z;
-
-    if (canStandAt(xSlidePosition)) {
-      track.position.copy(xSlidePosition);
-    } else if (canStandAt(zSlidePosition)) {
-      track.position.copy(zSlidePosition);
-    }
-  }
-
-  const distanceFromCenter = Math.hypot(track.position.x, track.position.z);
-  const boundsRadius = worldSettings[activeWorld].boundsRadius;
-  if (distanceFromCenter > boundsRadius) {
-    track.position.x *= boundsRadius / distanceFromCenter;
-    track.position.z *= boundsRadius / distanceFromCenter;
+function checkPortal() {
+  if (state.world !== "courtyard" || state.portalBusy) return;
+  if (horizontalDistance(player.root.position, world.portal.position) < 2.2) {
+    state.portalBusy = true;
+    showLoadingScreen();
+    window.setTimeout(() => {
+      state.world = "second";
+      courtyardRoot.visible = false;
+      secondRoot.visible = true;
+      player.root.position.set(0, 0, 12);
+      scene.background = new THREE.Color(0x1d2530);
+      scene.fog = new THREE.Fog(0x1d2530, 35, 120);
+      hideLoadingScreen();
+      setStatus("Second scene placeholder. You can build this later.");
+      state.portalBusy = false;
+    }, 800);
   }
 }
 
-function canStandAt(position) {
-  if (Math.hypot(position.x, position.z) > worldSettings[activeWorld].boundsRadius + 0.1) return false;
-
-  for (const box of activeColliders) {
-    if (position.y + playerCollider.height < box.min.y || position.y > box.max.y) continue;
-    const closestX = THREE.MathUtils.clamp(position.x, box.min.x, box.max.x);
-    const closestZ = THREE.MathUtils.clamp(position.z, box.min.z, box.max.z);
-    const dx = position.x - closestX;
-    const dz = position.z - closestZ;
-    if (dx * dx + dz * dz < playerCollider.radius * playerCollider.radius) return false;
-  }
-
-  return true;
+function horizontalDistance(a, b) {
+  return Math.hypot(a.x - b.x, a.z - b.z);
 }
 
-function checkPortalEntry() {
-  if (activeWorld !== "courtyard" || isWorldTransitioning || !loaded.city) return;
-  const dx = track.position.x - portalTrigger.position.x;
-  const dz = track.position.z - portalTrigger.position.z;
-  if (dx * dx + dz * dz < portalTrigger.radius * portalTrigger.radius) {
-    startWorldTransition();
-  }
+function setPointerTarget(event) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  raycaster.ray.intersectPlane(groundPlane, pointerTarget);
 }
 
-function startWorldTransition() {
-  isWorldTransitioning = true;
-  keys.clear();
-  mouseControl.active = false;
-  mouseControl.pointerDown = false;
-  showLoadingScreen();
-
-  let progress = 0;
-  const startedAt = performance.now();
-  const durationMs = 1150;
-
-  const tick = () => {
-    const elapsed = performance.now() - startedAt;
-    progress = Math.min(1, elapsed / durationMs);
-    setLoadingProgress(progress);
-
-    if (progress < 1) {
-      window.requestAnimationFrame(tick);
-    } else {
-      enterCityScene();
-      window.setTimeout(hideLoadingScreen, 180);
-    }
-  };
-
-  tick();
+function createRing(position, color) {
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.5, 0.75, 32),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, side: THREE.DoubleSide })
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.set(position.x, position.y + 0.04, position.z);
+  courtyardRoot.add(ring);
+  window.setTimeout(() => {
+    courtyardRoot.remove(ring);
+    ring.geometry.dispose();
+    ring.material.dispose();
+  }, 650);
 }
 
-function enterCityScene() {
-  activeWorld = "city";
-  isWorldTransitioning = false;
-  activeColliders = cityColliders;
-  keys.clear();
-  mouseControl.active = false;
-  mouseControl.pointerDown = false;
-  activeCar = null;
-  if (man) man.visible = true;
+function updateCamera(delta) {
+  const offset = state.telescopeOn ? new THREE.Vector3(0, 2.1, 2.1) : new THREE.Vector3(0, 4.8, 8.5);
+  const angle = player.root.rotation.y;
+  const desired = offset.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), angle).add(player.root.position);
+  if (state.inCloudView && player.root.position.y > 20) desired.y += 5.5;
+  camera.position.lerp(desired, Math.min(1, delta * 6.5));
+  controls.target.lerp(temp.copy(player.root.position).add(new THREE.Vector3(0, 1.25, 0)), Math.min(1, delta * 8));
+}
 
-  cityRoot.visible = true;
-  portalRoot.visible = false;
-  mountainRoot.visible = false;
-  waterRoot.visible = false;
-  ground.visible = true;
-
-  scene.background.copy(worldSettings.city.background);
-  scene.fog = worldSettings.city.fog;
-
-  track.position.set(0, 0, 0);
-  track.rotation.y = -Math.PI * 0.5;
-  camera.position.set(5.5, 4, 8.5);
-  controls.target.set(0, 0.96, 0);
-
-  statusEl.textContent = "City";
-  statusEl.dataset.ready = "true";
+function setStatus(text) {
+  statusEl.textContent = text;
+  statusEl.dataset.ready = "false";
+  window.clearTimeout(state.messageTimer);
+  state.messageTimer = window.setTimeout(() => {
+    statusEl.dataset.ready = "true";
+  }, 2600);
 }
 
 function showLoadingScreen() {
-  setLoadingProgress(0);
+  loadingProgress.style.width = "0%";
   loadingScreen.dataset.visible = "true";
+  window.setTimeout(() => {
+    loadingProgress.style.width = "100%";
+  }, 60);
 }
 
 function hideLoadingScreen() {
   loadingScreen.dataset.visible = "false";
-}
-
-function setLoadingProgress(progress) {
-  loadingProgress.style.width = `${Math.round(progress * 100)}%`;
-}
-
-function checkPeachPickups() {
-  if (activeWorld !== "mountain") return;
-
-  peaches.forEach((peach) => {
-    if (!peach.visible) return;
-    const dx = track.position.x - peach.position.x;
-    const dz = track.position.z - peach.position.z;
-    if (dx * dx + dz * dz < 0.75 * 0.75) {
-      peach.visible = false;
-      pickedPeaches += 1;
-      showPickupMessage();
-    }
-  });
-}
-
-function showPickupMessage() {
-  statusEl.textContent = `Peach picked up ${pickedPeaches}/${peaches.length}`;
-  statusEl.dataset.ready = "false";
-  window.clearTimeout(pickupMessageTimer);
-  pickupMessageTimer = window.setTimeout(() => {
-    statusEl.dataset.ready = "true";
-  }, 1400);
-}
-
-function updatePeachGuideArrow() {
-  if (activeWorld !== "mountain" || isWorldTransitioning) {
-    peachArrow.visible = false;
-    return;
-  }
-
-  let nearest = null;
-  let nearestDistance = Infinity;
-  peaches.forEach((peach) => {
-    if (!peach.visible) return;
-    const dx = peach.position.x - track.position.x;
-    const dz = peach.position.z - track.position.z;
-    const distance = dx * dx + dz * dz;
-    if (distance < nearestDistance) {
-      nearestDistance = distance;
-      nearest = peach;
-    }
-  });
-
-  if (!nearest) {
-    peachArrow.visible = false;
-    return;
-  }
-
-  const direction = new THREE.Vector3(
-    nearest.position.x - track.position.x,
-    0,
-    nearest.position.z - track.position.z
-  ).normalize();
-
-  peachArrow.position.set(track.position.x, track.position.y + 2.25, track.position.z);
-  peachArrow.setDirection(direction);
-  peachArrow.visible = true;
-}
-
-function updateCamera(delta) {
-  manForward.set(Math.cos(track.rotation.y), 0, -Math.sin(track.rotation.y)).normalize();
-  cameraRight.crossVectors(manForward, worldUp).normalize();
-  cameraSideOffset.copy(cameraRight).multiplyScalar(followCamera.shoulder);
-
-  cameraLookTarget.copy(track.position).addScaledVector(manForward, 1.15);
-  cameraLookTarget.y += 0.96;
-  placeCameraBehindPlayer();
-
-  camera.position.lerp(desiredCameraPosition, Math.min(1, delta * 7.5));
-  controls.target.lerp(cameraLookTarget, Math.min(1, delta * 9));
-}
-
-function placeCameraBehindPlayer() {
-  for (let distance = followCamera.distance; distance >= followCamera.minDistance; distance -= 0.45) {
-    cameraTestPosition
-      .copy(track.position)
-      .addScaledVector(manForward, -distance)
-      .add(cameraSideOffset);
-    cameraTestPosition.y = track.position.y + followCamera.height;
-
-    if (!isCameraInsideBuilding(cameraTestPosition)) {
-      desiredCameraPosition.copy(cameraTestPosition);
-      return;
-    }
-  }
-
-  desiredCameraPosition
-    .copy(track.position)
-    .addScaledVector(manForward, -followCamera.minDistance)
-    .add(cameraSideOffset);
-  desiredCameraPosition.y = track.position.y + followCamera.height + 0.6;
-}
-
-function isCameraInsideBuilding(position) {
-  for (const box of activeColliders) {
-    if (position.y < box.min.y || position.y > box.max.y) continue;
-    if (
-      position.x > box.min.x - 0.22 &&
-      position.x < box.max.x + 0.22 &&
-      position.z > box.min.z - 0.22 &&
-      position.z < box.max.z + 0.22
-    ) {
-      return true;
-    }
-  }
-
-  return false;
 }
 
 renderer.setAnimationLoop(animate);
@@ -1914,8 +678,4 @@ window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-  sceneTarget.setSize(window.innerWidth, window.innerHeight);
-  historyTarget.setSize(window.innerWidth, window.innerHeight);
-  postMaterial.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
-  hasHistoryFrame = false;
 });

@@ -17,7 +17,20 @@
   <body>
     <main id="stage" aria-label="walk-beta">
       <canvas id="scene"></canvas>
-      <p id="status" role="status">Loading model...</p>
+      <section id="main-menu" aria-label="Main menu">
+        <div class="menu-panel">
+          <p class="kicker">walk-beta</p>
+          <h1>Courtyard Trial</h1>
+          <p id="menu-text">
+            Explore a Chinese courtyard, climb three giant trees, unlock powers, and use the portal for a future second scene.
+          </p>
+          <div class="menu-actions">
+            <button id="start-game" type="button">Start Game</button>
+            <button id="show-controls" type="button">Controls</button>
+          </div>
+        </div>
+      </section>
+      <p id="status" role="status">Start from the menu</p>
       <section id="loading-screen" aria-live="polite" aria-label="Loading world">
         <div class="loading-panel">
           <p>Loading</p>
