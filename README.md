@@ -10,6 +10,9 @@ A browser-based courtyard walking demo with keyboard controls, hold-to-walk mous
 - Space: jump
 - Shift: run
 - E: interact
+- Type cheat: unlock flying
+- Double-tap Space after cheat: toggle flying
+- While flying: hold Space to go up, hold Shift to go down
 
 ## Publish on GitHub Pages
 

@@ -133,7 +133,11 @@ const state = {
   messageTimer: 0,
   portalBusy: false,
   fpsFrames: 0,
-  fpsElapsed: 0
+  fpsElapsed: 0,
+  cheatBuffer: "",
+  flyUnlocked: false,
+  flying: false,
+  lastSpaceTap: 0
 };
 
 const world = {
@@ -158,15 +162,17 @@ startButton.addEventListener("click", () => {
 
 controlsButton.addEventListener("click", () => {
   menuText.textContent =
-    "W or hold left mouse to walk. A/D turn. Space jumps. Shift runs. Walk into the portal for the future second scene.";
+    "W or hold left mouse to walk. A/D turn. Space jumps. Shift runs. Type cheat, then double-tap Space to fly. Hold Space up, Shift down.";
 });
 
 window.addEventListener("keydown", (event) => {
   const key = event.key.toLowerCase();
+  recordCheatCode(key);
   if (["w", "a", "d", "arrowup", "arrowleft", "arrowright", " ", "shift"].includes(key)) {
     event.preventDefault();
     keys.add(key);
   }
+  if (key === " " && state.flyUnlocked && !event.repeat) handleFlyToggle();
   if (key === "e") interact();
   if (key === "t" && state.canTeleport) {
     state.teleportMode = !state.teleportMode;
@@ -182,6 +188,26 @@ window.addEventListener("keydown", (event) => {
     setStatus("Destruct mode: click your blocks to remove them");
   }
 });
+
+function recordCheatCode(key) {
+  if (key.length !== 1 || !/[a-z]/.test(key)) return;
+  state.cheatBuffer = `${state.cheatBuffer}${key}`.slice(-5);
+  if (state.cheatBuffer !== "cheat" || state.flyUnlocked) return;
+  state.flyUnlocked = true;
+  setStatus("Cheat unlocked. Double-tap Space to fly.");
+}
+
+function handleFlyToggle() {
+  const now = performance.now();
+  if (now - state.lastSpaceTap < 320) {
+    state.flying = !state.flying;
+    state.velocityY = 0;
+    setStatus(state.flying ? "Flying on. Hold Space up, Shift down." : "Flying off");
+    state.lastSpaceTap = 0;
+    return;
+  }
+  state.lastSpaceTap = now;
+}
 
 window.addEventListener("keyup", (event) => {
   keys.delete(event.key.toLowerCase());
@@ -579,13 +605,17 @@ function updateMovement(delta) {
   const previousZ = player.root.position.z;
   const targetY = getGroundY(player.root.position.x, player.root.position.z);
   const grounded = player.root.position.y <= targetY + 0.04;
-  if (grounded) {
+  if (!state.flying && grounded) {
     player.root.position.y = targetY;
     state.velocityY = Math.max(0, state.velocityY);
   }
 
-  if (keys.has(" ") && grounded) state.velocityY = 6.1;
-  state.velocityY -= 14.5 * delta;
+  if (state.flying) {
+    state.velocityY = 0;
+  } else {
+    if (keys.has(" ") && grounded) state.velocityY = 6.1;
+    state.velocityY -= 14.5 * delta;
+  }
 
   const turningLeft = keys.has("a") || keys.has("arrowleft");
   const turningRight = keys.has("d") || keys.has("arrowright");
@@ -610,16 +640,22 @@ function updateMovement(delta) {
 
   const shouldWalk = forwardPressed || turningLeft || turningRight || mouseWalking;
   if (shouldWalk) {
-    const speed = (keys.has("shift") ? 5.9 : 3.35) * (state.canTeleport ? 0.75 : 1);
+    const speed = (!state.flying && keys.has("shift") ? 5.9 : 3.35) * (state.canTeleport ? 0.75 : 1);
     player.root.position.addScaledVector(move, speed * delta);
     resolveBuildingCollision(previousX, previousZ);
   }
 
-  player.root.position.y += state.velocityY * delta;
+  if (state.flying) {
+    if (keys.has(" ")) player.root.position.y += 6.2 * delta;
+    if (keys.has("shift")) player.root.position.y -= 6.2 * delta;
+  } else {
+    player.root.position.y += state.velocityY * delta;
+  }
   const newGroundY = getGroundY(player.root.position.x, player.root.position.z);
   if (player.root.position.y < newGroundY) {
     player.root.position.y = newGroundY;
     state.velocityY = 0;
+    if (state.flying) state.flying = false;
   }
 
   const bounds = state.world === "courtyard" ? world.bounds : 28;
