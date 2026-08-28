@@ -10,6 +10,7 @@ const menu = document.querySelector("#main-menu");
 const startButton = document.querySelector("#start-game");
 const controlsButton = document.querySelector("#show-controls");
 const menuText = document.querySelector("#menu-text");
+const fpsCounter = document.querySelector("#fps-counter");
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xb9d8ee);
@@ -67,6 +68,7 @@ const mouseMove = {
   active: false,
   target: new THREE.Vector3()
 };
+const grassPatches = [];
 
 const track = new THREE.Group();
 scene.add(track);
@@ -75,6 +77,13 @@ let man;
 let mixer;
 let walkAction;
 const loader = new FBXLoader();
+const textureLoader = new THREE.TextureLoader();
+const grassTextures = {
+  color: textureLoader.load("./assets/grass/gm.png"),
+  alpha: textureLoader.load("./assets/grass/gm_Opacity.png"),
+  normal: textureLoader.load("./assets/grass/gm_Normal.png")
+};
+grassTextures.color.colorSpace = THREE.SRGBColorSpace;
 const walkCycleSpeed = 0.9;
 const followCamera = {
   height: 3.15,
@@ -102,7 +111,9 @@ const state = {
   inCloudView: false,
   telescopeOn: false,
   messageTimer: 0,
-  portalBusy: false
+  portalBusy: false,
+  fpsFrames: 0,
+  fpsElapsed: 0
 };
 
 const world = {
@@ -192,6 +203,7 @@ function buildCourtyard() {
   addPaving();
   addMainBuilding();
   addCourtyardBuildings();
+  addGrassField();
   addCloudLayer();
 
   world.portal = createPortal(new THREE.Vector3(0, 0.15, -27));
@@ -209,6 +221,50 @@ function addPaving() {
       courtyardRoot.add(tile);
     }
   }
+}
+
+function addGrassField() {
+  const grassMaterial = new THREE.MeshStandardMaterial({
+    map: grassTextures.color,
+    alphaMap: grassTextures.alpha,
+    normalMap: grassTextures.normal,
+    color: 0xd9ffd0,
+    roughness: 0.78,
+    transparent: true,
+    alphaTest: 0.32,
+    side: THREE.DoubleSide
+  });
+  const bladeGeometry = new THREE.PlaneGeometry(1.25, 0.82, 2, 3);
+  bladeGeometry.translate(0, 0.41, 0);
+
+  for (let i = 0; i < 130; i += 1) {
+    const x = seededRange(i, 1, -40, 40);
+    const z = seededRange(i, 2, -40, 40);
+    if (!canPlaceGrass(x, z)) continue;
+
+    const patch = new THREE.Group();
+    const scale = seededRange(i, 3, 0.75, 1.55);
+    const blades = 2 + Math.floor(seededRange(i, 4, 0, 2.9));
+    for (let bladeIndex = 0; bladeIndex < blades; bladeIndex += 1) {
+      const blade = new THREE.Mesh(bladeGeometry, grassMaterial);
+      blade.rotation.y = (Math.PI / blades) * bladeIndex + seededRange(i + bladeIndex, 5, -0.22, 0.22);
+      blade.scale.setScalar(scale * seededRange(i + bladeIndex, 6, 0.82, 1.18));
+      blade.castShadow = true;
+      patch.add(blade);
+    }
+    patch.position.set(x, 0.02, z);
+    patch.rotation.y = seededRange(i, 7, 0, Math.PI * 2);
+    patch.userData.phase = seededRange(i, 8, 0, Math.PI * 2);
+    patch.userData.sway = seededRange(i, 9, 0.045, 0.12);
+    grassPatches.push(patch);
+    courtyardRoot.add(patch);
+  }
+}
+
+function canPlaceGrass(x, z) {
+  if (Math.abs(x) < 13 && Math.abs(z) < 13) return false;
+  if (horizontalDistance(new THREE.Vector3(x, 0, z), new THREE.Vector3(0, 0, -27)) < 5.4) return false;
+  return !isInsideBuildingAt(x, z, 0);
 }
 
 function addMainBuilding() {
@@ -376,10 +432,30 @@ function animate() {
     checkPortal();
     updateCamera(delta);
   }
+  updateGrass(delta);
+  updateFps(delta);
   if (mixer) mixer.update(delta);
   if (walkAction) walkAction.timeScale = isMoving ? walkCycleSpeed * (keys.has("shift") ? 1.45 : 1) : 0;
   controls.update();
   renderer.render(scene, camera);
+}
+
+function updateGrass(delta) {
+  const time = clock.elapsedTime;
+  grassPatches.forEach((patch) => {
+    patch.rotation.z = Math.sin(time * 1.7 + patch.userData.phase) * patch.userData.sway;
+    patch.rotation.x = Math.cos(time * 1.35 + patch.userData.phase) * patch.userData.sway * 0.42;
+  });
+}
+
+function updateFps(delta) {
+  state.fpsFrames += 1;
+  state.fpsElapsed += delta;
+  if (state.fpsElapsed < 0.35) return;
+  const fps = Math.round(state.fpsFrames / state.fpsElapsed);
+  fpsCounter.textContent = `FPS ${fps}`;
+  state.fpsFrames = 0;
+  state.fpsElapsed = 0;
 }
 
 function updateMovement(delta) {
@@ -556,6 +632,12 @@ function checkPortal() {
 
 function horizontalDistance(a, b) {
   return Math.hypot(a.x - b.x, a.z - b.z);
+}
+
+function seededRange(index, salt, min, max) {
+  const value = Math.sin(index * 127.1 + salt * 311.7) * 43758.5453123;
+  const normalized = value - Math.floor(value);
+  return min + (max - min) * normalized;
 }
 
 function setPointerTarget(event) {

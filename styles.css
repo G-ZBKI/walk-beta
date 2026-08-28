@@ -47,6 +47,20 @@ body {
   transition: opacity 260ms ease, transform 260ms ease;
 }
 
+#fps-counter {
+  position: absolute;
+  right: clamp(16px, 3vw, 34px);
+  bottom: clamp(42px, 6vw, 68px);
+  min-width: 72px;
+  margin: 0;
+  padding: 6px 8px;
+  color: #dff4ff;
+  background: rgba(10, 14, 18, 0.54);
+  font-size: 0.78rem;
+  font-weight: 850;
+  text-align: center;
+}
+
 #main-menu {
   position: absolute;
   inset: 0;
