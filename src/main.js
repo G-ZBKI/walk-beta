@@ -69,6 +69,7 @@ const mouseMove = {
   target: new THREE.Vector3()
 };
 const grassPatches = [];
+const courtyardClouds = [];
 
 const track = new THREE.Group();
 scene.add(track);
@@ -84,6 +85,25 @@ const grassTextures = {
   normal: textureLoader.load("./assets/grass/gm_Normal.png")
 };
 grassTextures.color.colorSpace = THREE.SRGBColorSpace;
+const rockTextures = [
+  {
+    color: textureLoader.load("./assets/rocks/textures/albedo_rock01.jpeg"),
+    normal: textureLoader.load("./assets/rocks/textures/normals_rock01.jpeg")
+  },
+  {
+    color: textureLoader.load("./assets/rocks/textures/albedo_rock07.jpeg"),
+    normal: textureLoader.load("./assets/rocks/textures/normals_rock07.jpeg")
+  },
+  {
+    color: textureLoader.load("./assets/rocks/textures/albedo_rock20.jpeg"),
+    normal: textureLoader.load("./assets/rocks/textures/normals_rock20.jpeg")
+  }
+];
+rockTextures.forEach((entry) => {
+  entry.color.colorSpace = THREE.SRGBColorSpace;
+});
+const cloudTexture = textureLoader.load("./assets/cloud/textures/texture1.png");
+cloudTexture.colorSpace = THREE.SRGBColorSpace;
 const walkCycleSpeed = 0.9;
 const followCamera = {
   height: 3.15,
@@ -205,6 +225,8 @@ function buildCourtyard() {
   addCourtyardBuildings();
   addGrassField();
   addCloudLayer();
+  addTexturedClouds();
+  addRockField();
 
   world.portal = createPortal(new THREE.Vector3(0, 0.15, -27));
   courtyardRoot.add(world.portal);
@@ -237,14 +259,14 @@ function addGrassField() {
   const bladeGeometry = new THREE.PlaneGeometry(1.25, 0.82, 2, 3);
   bladeGeometry.translate(0, 0.41, 0);
 
-  for (let i = 0; i < 130; i += 1) {
+  for (let i = 0; i < 190; i += 1) {
     const x = seededRange(i, 1, -40, 40);
     const z = seededRange(i, 2, -40, 40);
     if (!canPlaceGrass(x, z)) continue;
 
     const patch = new THREE.Group();
     const scale = seededRange(i, 3, 0.75, 1.55);
-    const blades = 2 + Math.floor(seededRange(i, 4, 0, 2.9));
+    const blades = 2;
     for (let bladeIndex = 0; bladeIndex < blades; bladeIndex += 1) {
       const blade = new THREE.Mesh(bladeGeometry, grassMaterial);
       blade.rotation.y = (Math.PI / blades) * bladeIndex + seededRange(i + bladeIndex, 5, -0.22, 0.22);
@@ -333,6 +355,89 @@ function addCloudLayer() {
     cloud.scale.x = 1.9;
     courtyardRoot.add(cloud);
   }
+}
+
+function addTexturedClouds() {
+  const material = new THREE.MeshStandardMaterial({
+    map: cloudTexture,
+    color: 0xffffff,
+    roughness: 0.62,
+    transparent: true,
+    opacity: 0.72,
+    depthWrite: false,
+    side: THREE.DoubleSide
+  });
+  const positions = [
+    [-35, 34, -42, 8],
+    [-12, 39, -48, 9],
+    [18, 36, -45, 8],
+    [38, 40, -24, 7],
+    [-42, 38, 10, 7],
+    [16, 42, 38, 8],
+    [-18, 44, 41, 7],
+    [42, 37, 25, 7]
+  ];
+  positions.forEach(([x, y, z, scale], index) => {
+    const cloud = new THREE.Group();
+    for (let i = 0; i < 4; i += 1) {
+      const puff = new THREE.Mesh(new THREE.PlaneGeometry(scale * (1.4 + i * 0.12), scale * 0.72), material);
+      puff.position.set((i - 1.5) * scale * 0.55, Math.sin(i) * scale * 0.12, seededRange(index + i, 31, -0.25, 0.25));
+      puff.rotation.y = seededRange(index + i, 32, -0.35, 0.35);
+      cloud.add(puff);
+    }
+    cloud.position.set(x, y, z);
+    cloud.lookAt(0, y - 3, 0);
+    cloud.userData.phase = index * 0.64;
+    courtyardClouds.push(cloud);
+    courtyardRoot.add(cloud);
+  });
+}
+
+function addRockField() {
+  const materials = rockTextures.map((entry) => new THREE.MeshStandardMaterial({
+    map: entry.color,
+    normalMap: entry.normal,
+    roughness: 0.86,
+    color: 0xd3c6ad
+  }));
+  const positions = [
+    [-38, -24, 0.72],
+    [-30, -8, 0.55],
+    [-24, 32, 0.62],
+    [-9, 25, 0.45],
+    [17, -31, 0.58],
+    [28, -17, 0.66],
+    [34, 11, 0.48],
+    [21, 28, 0.6],
+    [-37, 19, 0.52],
+    [5, 39, 0.5],
+    [39, -35, 0.46],
+    [-15, -38, 0.56],
+    [-41, 2, 0.5],
+    [41, -4, 0.54],
+    [31, 36, 0.48],
+    [-33, -36, 0.6]
+  ];
+  positions.forEach(([x, z, scale], index) => {
+    if (!canPlaceProp(x, z)) return;
+    const rock = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(1, 0),
+      materials[index % materials.length]
+    );
+    rock.position.set(x, 0.18 * scale, z);
+    rock.rotation.set(seededRange(index, 14, -0.4, 0.4), seededRange(index, 16, 0, Math.PI * 2), seededRange(index, 15, -0.24, 0.24));
+    rock.scale.set(scale * seededRange(index, 17, 0.75, 1.25), scale * seededRange(index, 18, 0.28, 0.48), scale * seededRange(index, 19, 0.72, 1.2));
+    rock.castShadow = true;
+    rock.receiveShadow = true;
+    courtyardRoot.add(rock);
+    world.colliders.push({ x, z, width: 1.4 * scale, depth: 1.4 * scale, height: 0.75, padding: 0.12 });
+  });
+}
+
+function canPlaceProp(x, z) {
+  if (Math.abs(x) < 12 && Math.abs(z) < 12) return false;
+  if (horizontalDistance(new THREE.Vector3(x, 0, z), new THREE.Vector3(0, 0, -27)) < 6) return false;
+  return !isInsideBuildingAt(x, z, 0);
 }
 
 function createPortal(position) {
@@ -433,6 +538,7 @@ function animate() {
     updateCamera(delta);
   }
   updateGrass(delta);
+  updateClouds(delta);
   updateFps(delta);
   if (mixer) mixer.update(delta);
   if (walkAction) walkAction.timeScale = isMoving ? walkCycleSpeed * (keys.has("shift") ? 1.45 : 1) : 0;
@@ -445,6 +551,15 @@ function updateGrass(delta) {
   grassPatches.forEach((patch) => {
     patch.rotation.z = Math.sin(time * 1.7 + patch.userData.phase) * patch.userData.sway;
     patch.rotation.x = Math.cos(time * 1.35 + patch.userData.phase) * patch.userData.sway * 0.42;
+  });
+}
+
+function updateClouds(delta) {
+  const time = clock.elapsedTime;
+  courtyardClouds.forEach((cloud) => {
+    cloud.position.x += delta * 0.32;
+    cloud.position.y += Math.sin(time * 0.45 + cloud.userData.phase) * delta * 0.18;
+    if (cloud.position.x > 48) cloud.position.x = -48;
   });
 }
 
