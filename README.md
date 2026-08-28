@@ -1,17 +1,15 @@
 # walk-beta
 
-A browser-based courtyard adventure with three giant trees, unlockable abilities, parkour, boat timing, building/destructing, and a portal to a future second scene.
+A browser-based courtyard walking demo with keyboard controls, hold-to-walk mouse movement, and a portal to a future second scene.
 
 ## Controls
 
-- W/A/S/D or Arrow keys: move
+- W or Up Arrow: move forward
+- A/D or Left/Right Arrow: turn
+- Hold left mouse: walk toward the pointer
 - Space: jump
 - Shift: run
 - E: interact
-- T: teleport mode after unlocking it
-- Q: telescope after unlocking it
-- 1/2: build/destruct after unlocking it
-- Click: teleport, build, or destruct depending on mode
 
 ## Publish on GitHub Pages
 
