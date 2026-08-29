@@ -249,15 +249,13 @@ function buildCourtyard() {
   courtyardRoot.add(ground);
 
   addPaving();
-  addMainBuilding();
-  addCourtyardBuildings();
   loadImperialBuildings();
   addGrassField();
   addCloudLayer();
   addTexturedClouds();
   addRockField();
 
-  world.portal = createPortal(new THREE.Vector3(0, 0.15, -27));
+  world.portal = createPortal(new THREE.Vector3(0, 0.15, -24.4));
   courtyardRoot.add(world.portal);
 }
 
@@ -318,22 +316,6 @@ function canPlaceGrass(x, z) {
   return !isInsideBuildingAt(x, z, 0);
 }
 
-function addMainBuilding() {
-  addBuilding(new THREE.Vector3(0, 0, -30), 18, 6, 7, 0xb44332, true);
-  const sign = new THREE.Mesh(
-    new THREE.BoxGeometry(5.2, 0.5, 0.18),
-    new THREE.MeshStandardMaterial({ color: 0x2b1913, roughness: 0.55 })
-  );
-  sign.position.set(0, 4.5, -26.42);
-  courtyardRoot.add(sign);
-}
-
-function addCourtyardBuildings() {
-  addBuilding(new THREE.Vector3(-30, 0, 1), 8, 4.6, 32, 0xc65a3d, false);
-  addBuilding(new THREE.Vector3(30, 0, 1), 8, 4.6, 32, 0xc65a3d, false);
-  addBuilding(new THREE.Vector3(0, 0, 34), 28, 4.2, 7, 0xba4f37, false);
-}
-
 function loadImperialBuildings() {
   gltfLoader.load(
     "./assets/imperial-building/scene.gltf",
@@ -342,8 +324,10 @@ function loadImperialBuildings() {
       source.add(gltf.scene);
       prepareImperialBuilding(source);
       const placements = [
-        { position: new THREE.Vector3(-20, 0.02, -18), rotation: Math.PI * 0.12, scale: 4.2 },
-        { position: new THREE.Vector3(22, 0.02, 21), rotation: -Math.PI * 0.86, scale: 3.9 }
+        { position: new THREE.Vector3(0, 0.02, -30), rotation: 0, scale: 8.6 },
+        { position: new THREE.Vector3(-25, 0.02, 5), rotation: Math.PI * 0.5, scale: 6.8 },
+        { position: new THREE.Vector3(25, 0.02, 6), rotation: -Math.PI * 0.5, scale: 6.8 },
+        { position: new THREE.Vector3(0, 0.02, 34), rotation: Math.PI, scale: 7.3 }
       ];
 
       placements.forEach(({ position, rotation, scale }) => {
@@ -411,48 +395,6 @@ function addLoadedBuildingCollision(position, width, depth, height) {
       new THREE.Vector3(position.x + width / 2, height + 1.4, position.z + depth / 2)
     )
   );
-}
-
-function addBuilding(position, width, height, depth, color, hasDoor) {
-  const wall = new THREE.Mesh(
-    new THREE.BoxGeometry(width, height, depth),
-    new THREE.MeshStandardMaterial({ color, roughness: 0.68 })
-  );
-  wall.position.set(position.x, height / 2, position.z);
-  wall.castShadow = true;
-  wall.receiveShadow = true;
-  courtyardRoot.add(wall);
-  world.platforms.push({ x: position.x, z: position.z, width, depth, y: height + 0.2 });
-  world.colliders.push({
-    x: position.x,
-    z: position.z,
-    width,
-    depth,
-    height,
-    padding: 0.32
-  });
-  world.cameraBlocks.push(
-    new THREE.Box3(
-      new THREE.Vector3(position.x - width / 2, 0, position.z - depth / 2),
-      new THREE.Vector3(position.x + width / 2, height + 2.2, position.z + depth / 2)
-    )
-  );
-
-  const roof = new THREE.Mesh(
-    new THREE.ConeGeometry(Math.max(width, depth) * 0.62, 2, 4),
-    new THREE.MeshStandardMaterial({ color: 0x26313a, roughness: 0.72 })
-  );
-  roof.position.set(position.x, height + 1.05, position.z);
-  roof.rotation.y = Math.PI * 0.25;
-  roof.scale.z = depth > width ? 1.45 : 0.5;
-  roof.castShadow = true;
-  courtyardRoot.add(roof);
-
-  if (hasDoor) {
-    const door = new THREE.Mesh(new THREE.BoxGeometry(3.6, 3.2, 0.18), new THREE.MeshStandardMaterial({ color: 0x432016 }));
-    door.position.set(position.x, 1.6, position.z + depth / 2 + 0.1);
-    courtyardRoot.add(door);
-  }
 }
 
 function addCloudLayer() {
@@ -801,7 +743,7 @@ function getGroundY(x, z) {
 
 function interact() {
   if (!state.started || state.world !== "courtyard") return;
-  setStatus("Walk into the portal inside the main building.");
+  setStatus("Walk into the portal by the imperial building.");
 }
 
 function toggleTelescope() {
