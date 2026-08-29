@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 const canvas = document.querySelector("#scene");
 const statusEl = document.querySelector("#status");
@@ -78,6 +79,7 @@ let man;
 let mixer;
 let walkAction;
 const loader = new FBXLoader();
+const gltfLoader = new GLTFLoader();
 const textureLoader = new THREE.TextureLoader();
 const grassTextures = {
   color: textureLoader.load("./assets/grass/gm.png"),
@@ -249,6 +251,7 @@ function buildCourtyard() {
   addPaving();
   addMainBuilding();
   addCourtyardBuildings();
+  loadImperialBuildings();
   addGrassField();
   addCloudLayer();
   addTexturedClouds();
@@ -329,6 +332,85 @@ function addCourtyardBuildings() {
   addBuilding(new THREE.Vector3(-30, 0, 1), 8, 4.6, 32, 0xc65a3d, false);
   addBuilding(new THREE.Vector3(30, 0, 1), 8, 4.6, 32, 0xc65a3d, false);
   addBuilding(new THREE.Vector3(0, 0, 34), 28, 4.2, 7, 0xba4f37, false);
+}
+
+function loadImperialBuildings() {
+  gltfLoader.load(
+    "./assets/imperial-building/scene.gltf",
+    (gltf) => {
+      const source = new THREE.Group();
+      source.add(gltf.scene);
+      prepareImperialBuilding(source);
+      const placements = [
+        { position: new THREE.Vector3(-20, 0.02, -18), rotation: Math.PI * 0.12, scale: 4.2 },
+        { position: new THREE.Vector3(22, 0.02, 21), rotation: -Math.PI * 0.86, scale: 3.9 }
+      ];
+
+      placements.forEach(({ position, rotation, scale }) => {
+        const building = source.clone(true);
+        building.position.copy(position);
+        building.rotation.y = rotation;
+        building.scale.multiplyScalar(scale);
+        courtyardRoot.add(building);
+        addLoadedBuildingCollision(position, 6.6 * scale / 5, 6.2 * scale / 5, 4.8 * scale / 5);
+      });
+      setStatus("Imperial buildings loaded");
+    },
+    undefined,
+    (error) => {
+      console.error(error);
+      setStatus("Could not load imperial buildings");
+    }
+  );
+}
+
+function prepareImperialBuilding(object) {
+  object.traverse((child) => {
+    if (!child.isMesh) return;
+    child.castShadow = true;
+    child.receiveShadow = true;
+    if (!child.material) return;
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    materials.forEach((material) => {
+      material.roughness = Math.max(material.roughness ?? 0.65, 0.58);
+      material.needsUpdate = true;
+    });
+  });
+  normalizeObjectToHeight(object, 1);
+}
+
+function normalizeObjectToHeight(object, targetHeight) {
+  object.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(object);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  object.scale.multiplyScalar(targetHeight / Math.max(size.y, 0.001));
+
+  object.updateMatrixWorld(true);
+  const scaledBox = new THREE.Box3().setFromObject(object);
+  const center = new THREE.Vector3();
+  scaledBox.getCenter(center);
+  object.position.x -= center.x;
+  object.position.z -= center.z;
+  object.position.y -= scaledBox.min.y;
+}
+
+function addLoadedBuildingCollision(position, width, depth, height) {
+  world.platforms.push({ x: position.x, z: position.z, width, depth, y: height + 0.2 });
+  world.colliders.push({
+    x: position.x,
+    z: position.z,
+    width,
+    depth,
+    height,
+    padding: 0.32
+  });
+  world.cameraBlocks.push(
+    new THREE.Box3(
+      new THREE.Vector3(position.x - width / 2, 0, position.z - depth / 2),
+      new THREE.Vector3(position.x + width / 2, height + 1.4, position.z + depth / 2)
+    )
+  );
 }
 
 function addBuilding(position, width, height, depth, color, hasDoor) {
