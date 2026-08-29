@@ -71,6 +71,8 @@ const mouseMove = {
 };
 const grassPatches = [];
 const courtyardClouds = [];
+const sweepers = [];
+let orb;
 
 const track = new THREE.Group();
 scene.add(track);
@@ -106,6 +108,13 @@ rockTextures.forEach((entry) => {
 });
 const cloudTexture = textureLoader.load("./assets/cloud/textures/texture1.png");
 cloudTexture.colorSpace = THREE.SRGBColorSpace;
+const sweeperTextures = {
+  color: textureLoader.load("./assets/sweeper/textures/sweeper_Base_color.png"),
+  metalness: textureLoader.load("./assets/sweeper/textures/sweeper_Metallic.png"),
+  roughness: textureLoader.load("./assets/sweeper/textures/sweeper_Roughness.png"),
+  normal: textureLoader.load("./assets/sweeper/textures/sweeper_Normal_OpenGL.png")
+};
+sweeperTextures.color.colorSpace = THREE.SRGBColorSpace;
 const walkCycleSpeed = 0.9;
 const followCamera = {
   height: 3.15,
@@ -139,7 +148,8 @@ const state = {
   cheatBuffer: "",
   flyUnlocked: false,
   flying: false,
-  lastSpaceTap: 0
+  lastSpaceTap: 0,
+  orbCollected: false
 };
 
 const world = {
@@ -250,6 +260,8 @@ function buildCourtyard() {
 
   addPaving();
   loadImperialBuildings();
+  loadOrb();
+  loadSweepers();
   addGrassField();
   addCloudLayer();
   addTexturedClouds();
@@ -324,19 +336,19 @@ function loadImperialBuildings() {
       source.add(gltf.scene);
       prepareImperialBuilding(source);
       const placements = [
-        { position: new THREE.Vector3(0, 0.02, -30), rotation: 0, scale: 8.6 },
+        { position: new THREE.Vector3(0, 0.02, -30), rotation: 0, scale: 8.6, enterable: true },
         { position: new THREE.Vector3(-25, 0.02, 5), rotation: Math.PI * 0.5, scale: 6.8 },
         { position: new THREE.Vector3(25, 0.02, 6), rotation: -Math.PI * 0.5, scale: 6.8 },
         { position: new THREE.Vector3(0, 0.02, 34), rotation: Math.PI, scale: 7.3 }
       ];
 
-      placements.forEach(({ position, rotation, scale }) => {
+      placements.forEach(({ position, rotation, scale, enterable }) => {
         const building = source.clone(true);
         building.position.copy(position);
         building.rotation.y = rotation;
         building.scale.multiplyScalar(scale);
         courtyardRoot.add(building);
-        addLoadedBuildingCollision(position, 6.6 * scale / 5, 6.2 * scale / 5, 4.8 * scale / 5);
+        if (!enterable) addLoadedBuildingCollision(position, 6.6 * scale / 5, 6.2 * scale / 5, 4.8 * scale / 5);
       });
       setStatus("Imperial buildings loaded");
     },
@@ -517,6 +529,102 @@ function buildSecondScene() {
   secondRoot.add(marker);
 }
 
+function loadOrb() {
+  gltfLoader.load(
+    "./assets/orb/scene.gltf",
+    (gltf) => {
+      orb = new THREE.Group();
+      orb.add(gltf.scene);
+      prepareOrb(orb);
+      orb.position.set(0, 1.35, -30);
+      orb.scale.multiplyScalar(1.45);
+      courtyardRoot.add(orb);
+      const glow = new THREE.PointLight(0x5de7ff, 2.2, 9, 1.8);
+      glow.position.set(0, 2.1, -30);
+      courtyardRoot.add(glow);
+      setStatus("Cyber orb hidden in the building");
+    },
+    undefined,
+    (error) => {
+      console.error(error);
+      setStatus("Could not load cyber orb");
+    }
+  );
+}
+
+function prepareOrb(object) {
+  object.traverse((child) => {
+    if (!child.isMesh) return;
+    child.castShadow = true;
+    child.receiveShadow = true;
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    materials.filter(Boolean).forEach((material) => {
+      if (material.emissive) {
+        material.emissive = new THREE.Color(0x38cfff);
+        material.emissiveIntensity = Math.max(material.emissiveIntensity ?? 0, 1.25);
+      }
+      material.needsUpdate = true;
+    });
+  });
+  normalizeObjectToHeight(object, 1);
+}
+
+function loadSweepers() {
+  loader.load(
+    "./assets/sweeper/source/sweeper.fbx",
+    (object) => {
+      prepareSweeper(object);
+      const starts = [
+        [-7, -18],
+        [-3.5, -16],
+        [0, -15],
+        [3.5, -16],
+        [7, -18],
+        [-8, -25],
+        [-4, -23],
+        [0, -22],
+        [4, -23],
+        [8, -25]
+      ];
+      starts.forEach(([x, z], index) => {
+        const sweeper = object.clone(true);
+        sweeper.position.set(x, 0.04, z);
+        sweeper.rotation.y = seededRange(index, 40, 0, Math.PI * 2);
+        sweeper.userData.home = new THREE.Vector3(x, 0.04, z);
+        sweeper.userData.phase = index * 0.6;
+        sweeper.userData.speed = seededRange(index, 41, 1.55, 2.25);
+        sweepers.push(sweeper);
+        courtyardRoot.add(sweeper);
+      });
+      setStatus("Robot sweepers guarding the orb");
+    },
+    undefined,
+    (error) => {
+      console.error(error);
+      setStatus("Could not load robot sweepers");
+    }
+  );
+}
+
+function prepareSweeper(object) {
+  const material = new THREE.MeshStandardMaterial({
+    map: sweeperTextures.color,
+    metalnessMap: sweeperTextures.metalness,
+    roughnessMap: sweeperTextures.roughness,
+    normalMap: sweeperTextures.normal,
+    metalness: 0.55,
+    roughness: 0.62
+  });
+  object.traverse((child) => {
+    if (!child.isMesh) return;
+    child.material = material;
+    child.castShadow = true;
+    child.receiveShadow = true;
+  });
+  normalizeObjectToHeight(object, 0.58);
+  object.rotation.y = Math.PI * 0.5;
+}
+
 function loadMan() {
   loader.load(
     "./assets/source/Mr_Man_Walking.fbx",
@@ -584,9 +692,12 @@ function animate() {
   let isMoving = false;
   if (state.started) {
     isMoving = updateMovement(delta);
+    updateSweepers(delta);
+    checkOrb();
     checkPortal();
     updateCamera(delta);
   }
+  updateOrb(delta);
   updateGrass(delta);
   updateClouds(delta);
   updateFps(delta);
@@ -621,6 +732,44 @@ function updateFps(delta) {
   fpsCounter.textContent = `FPS ${fps}`;
   state.fpsFrames = 0;
   state.fpsElapsed = 0;
+}
+
+function updateOrb(delta) {
+  if (!orb || state.orbCollected) return;
+  orb.rotation.y += delta * 1.25;
+  orb.position.y = 1.35 + Math.sin(clock.elapsedTime * 2.2) * 0.16;
+}
+
+function updateSweepers(delta) {
+  if (state.world !== "courtyard" || sweepers.length === 0) return;
+  const playerPos = player.root.position;
+  const orbPos = new THREE.Vector3(0, 0, -30);
+  sweepers.forEach((sweeper, index) => {
+    const guardPoint = new THREE.Vector3(
+      THREE.MathUtils.clamp(playerPos.x * 0.55, -8, 8),
+      0.04,
+      THREE.MathUtils.clamp((playerPos.z + orbPos.z) * 0.5 + seededRange(index, 50, -2.2, 2.2), -27.5, -16)
+    );
+    const home = sweeper.userData.home;
+    const distanceToDoor = horizontalDistance(playerPos, orbPos);
+    const target = distanceToDoor < 24 ? guardPoint : home;
+    temp.copy(target).sub(sweeper.position);
+    temp.y = 0;
+    if (temp.lengthSq() > 0.05) {
+      temp.normalize();
+      sweeper.position.addScaledVector(temp, sweeper.userData.speed * delta);
+      sweeper.rotation.y = Math.atan2(temp.x, temp.z);
+    }
+    sweeper.position.y = 0.04 + Math.sin(clock.elapsedTime * 5 + sweeper.userData.phase) * 0.025;
+  });
+}
+
+function checkOrb() {
+  if (!orb || state.orbCollected || state.world !== "courtyard") return;
+  if (horizontalDistance(player.root.position, orb.position) > 1.6 || player.root.position.y > 2.8) return;
+  state.orbCollected = true;
+  orb.visible = false;
+  setStatus("Cyber orb collected");
 }
 
 function updateMovement(delta) {
@@ -667,6 +816,7 @@ function updateMovement(delta) {
     const speed = (!state.flying && keys.has("shift") ? 5.9 : 3.35) * (state.canTeleport ? 0.75 : 1);
     player.root.position.addScaledVector(move, speed * delta);
     resolveBuildingCollision(previousX, previousZ);
+    resolveSweeperCollision(previousX, previousZ);
   }
 
   if (state.flying) {
@@ -686,6 +836,19 @@ function updateMovement(delta) {
   player.root.position.x = THREE.MathUtils.clamp(player.root.position.x, -bounds, bounds);
   player.root.position.z = THREE.MathUtils.clamp(player.root.position.z, -bounds, bounds);
   return shouldWalk;
+}
+
+function resolveSweeperCollision(previousX, previousZ) {
+  if (state.world !== "courtyard" || state.flying) return;
+  for (const sweeper of sweepers) {
+    if (player.root.position.y > 0.86) continue;
+    const distance = horizontalDistance(player.root.position, sweeper.position);
+    if (distance >= 1.08) continue;
+    player.root.position.x = previousX;
+    player.root.position.z = previousZ;
+    setStatus("Jump over the sweepers or go around them");
+    return;
+  }
 }
 
 function resolveBuildingCollision(previousX, previousZ) {

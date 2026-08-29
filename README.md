@@ -1,6 +1,6 @@
 # walk-beta
 
-A browser-based courtyard walking demo with keyboard controls, hold-to-walk mouse movement, animated grass, fluffy clouds, small rocks, an FPS counter, and a portal to a future second scene.
+A browser-based courtyard walking demo with keyboard controls, hold-to-walk mouse movement, animated grass, fluffy clouds, small rocks, robot sweepers guarding a cyber orb, an FPS counter, and a portal to a future second scene.
 
 ## Controls
 
@@ -10,6 +10,7 @@ A browser-based courtyard walking demo with keyboard controls, hold-to-walk mous
 - Space: jump
 - Shift: run
 - E: interact
+- Find the cyber orb: jump over or walk around the robot sweepers guarding it
 - Type cheat: unlock flying
 - Double-tap Space after cheat: toggle flying
 - While flying: hold Space to go up, hold Shift to go down
