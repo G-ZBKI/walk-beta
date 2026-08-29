@@ -149,7 +149,10 @@ const state = {
   flyUnlocked: false,
   flying: false,
   lastSpaceTap: 0,
-  orbCollected: false
+  orbCollected: false,
+  sweeperAlertLevel: "calm",
+  sweeperAlertStart: 0,
+  sweeperLookout: null
 };
 
 const world = {
@@ -591,12 +594,15 @@ function loadSweepers() {
         sweeper.position.set(x, 0.04, z);
         sweeper.rotation.y = seededRange(index, 40, 0, Math.PI * 2);
         sweeper.userData.home = new THREE.Vector3(x, 0.04, z);
+        sweeper.userData.wanderTarget = new THREE.Vector3(x, 0.04, z);
         sweeper.userData.phase = index * 0.6;
         sweeper.userData.speed = seededRange(index, 41, 1.55, 2.25);
+        sweeper.userData.marker = createAlertMarker();
+        sweeper.add(sweeper.userData.marker);
         sweepers.push(sweeper);
         courtyardRoot.add(sweeper);
       });
-      setStatus("Robot sweepers guarding the orb");
+      setStatus("Robot sweepers roaming the courtyard");
     },
     undefined,
     (error) => {
@@ -623,6 +629,40 @@ function prepareSweeper(object) {
   });
   normalizeObjectToHeight(object, 0.58);
   object.rotation.y = Math.PI * 0.5;
+}
+
+function createAlertMarker() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 128;
+  canvas.height = 128;
+  const texture = new THREE.CanvasTexture(canvas);
+  const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
+  const sprite = new THREE.Sprite(material);
+  sprite.position.set(0, 1.05, 0);
+  sprite.scale.set(0.55, 0.55, 0.55);
+  sprite.visible = false;
+  sprite.userData.canvas = canvas;
+  sprite.userData.texture = texture;
+  return sprite;
+}
+
+function setSweeperMarker(sweeper, symbol, color) {
+  const marker = sweeper.userData.marker;
+  if (!marker) return;
+  const canvas = marker.userData.canvas;
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "rgba(12, 16, 20, 0.72)";
+  ctx.beginPath();
+  ctx.arc(64, 64, 44, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = color;
+  ctx.font = "900 82px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(symbol, 64, 62);
+  marker.userData.texture.needsUpdate = true;
+  marker.visible = true;
 }
 
 function loadMan() {
@@ -744,24 +784,93 @@ function updateSweepers(delta) {
   if (state.world !== "courtyard" || sweepers.length === 0) return;
   const playerPos = player.root.position;
   const orbPos = new THREE.Vector3(0, 0, -30);
+  updateSweeperAlert(playerPos);
+
   sweepers.forEach((sweeper, index) => {
-    const guardPoint = new THREE.Vector3(
-      THREE.MathUtils.clamp(playerPos.x * 0.55, -8, 8),
-      0.04,
-      THREE.MathUtils.clamp((playerPos.z + orbPos.z) * 0.5 + seededRange(index, 50, -2.2, 2.2), -27.5, -16)
-    );
-    const home = sweeper.userData.home;
-    const distanceToDoor = horizontalDistance(playerPos, orbPos);
-    const target = distanceToDoor < 24 ? guardPoint : home;
-    temp.copy(target).sub(sweeper.position);
-    temp.y = 0;
-    if (temp.lengthSq() > 0.05) {
-      temp.normalize();
-      sweeper.position.addScaledVector(temp, sweeper.userData.speed * delta);
-      sweeper.rotation.y = Math.atan2(temp.x, temp.z);
+    const target = getSweeperTarget(sweeper, index, playerPos, orbPos);
+    const steer = target.clone().sub(sweeper.position);
+    steer.y = 0;
+    if (steer.lengthSq() > 0.05) steer.normalize();
+    steer.add(getSweeperSeparation(sweeper).multiplyScalar(1.35));
+
+    if (steer.lengthSq() > 0.001) {
+      steer.normalize();
+      const speed = state.sweeperAlertLevel === "alert" ? sweeper.userData.speed * 1.55 : sweeper.userData.speed * 0.72;
+      sweeper.position.addScaledVector(steer, speed * delta);
+      sweeper.rotation.y = Math.atan2(steer.x, steer.z);
     }
+
+    keepSweeperInYard(sweeper);
     sweeper.position.y = 0.04 + Math.sin(clock.elapsedTime * 5 + sweeper.userData.phase) * 0.025;
   });
+}
+
+function updateSweeperAlert(playerPos) {
+  if (state.sweeperAlertLevel === "alert" || state.orbCollected) return;
+
+  if (state.sweeperAlertLevel === "curious") {
+    if (performance.now() - state.sweeperAlertStart > 900) {
+      state.sweeperAlertLevel = "alert";
+      sweepers.forEach((sweeper) => setSweeperMarker(sweeper, "!", "#ff453a"));
+      setStatus("The sweepers spotted you. Jump over them or go around.");
+    }
+    return;
+  }
+
+  let closest = null;
+  let closestDistance = Infinity;
+  sweepers.forEach((sweeper) => {
+    const distance = horizontalDistance(playerPos, sweeper.position);
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closest = sweeper;
+    }
+  });
+
+  if (closest && closestDistance < 7.2 && playerPos.z < -10) {
+    state.sweeperAlertLevel = "curious";
+    state.sweeperAlertStart = performance.now();
+    state.sweeperLookout = closest;
+    setSweeperMarker(closest, "?", "#ffd447");
+    setStatus("A sweeper heard something...");
+  }
+}
+
+function getSweeperTarget(sweeper, index, playerPos, orbPos) {
+  if (state.sweeperAlertLevel === "alert") {
+    return new THREE.Vector3(
+      THREE.MathUtils.clamp(playerPos.x * 0.58 + seededRange(index, 50, -3.4, 3.4), -10, 10),
+      0.04,
+      THREE.MathUtils.clamp((playerPos.z + orbPos.z) * 0.5 + seededRange(index, 51, -3.2, 3.2), -28, -14)
+    );
+  }
+
+  const target = sweeper.userData.wanderTarget;
+  if (horizontalDistance(sweeper.position, target) < 1.2) {
+    target.set(
+      THREE.MathUtils.clamp(sweeper.userData.home.x + seededRange(performance.now() * 0.002 + index, 60, -8, 8), -38, 38),
+      0.04,
+      THREE.MathUtils.clamp(sweeper.userData.home.z + seededRange(performance.now() * 0.002 + index, 61, -8, 8), -34, -8)
+    );
+  }
+  return target;
+}
+
+function getSweeperSeparation(sweeper) {
+  const separation = new THREE.Vector3();
+  sweepers.forEach((other) => {
+    if (other === sweeper) return;
+    const distance = horizontalDistance(sweeper.position, other.position);
+    if (distance <= 0.001 || distance > 1.65) return;
+    separation.x += (sweeper.position.x - other.position.x) / distance;
+    separation.z += (sweeper.position.z - other.position.z) / distance;
+  });
+  return separation;
+}
+
+function keepSweeperInYard(sweeper) {
+  sweeper.position.x = THREE.MathUtils.clamp(sweeper.position.x, -39, 39);
+  sweeper.position.z = THREE.MathUtils.clamp(sweeper.position.z, -34, -7);
 }
 
 function checkOrb() {
@@ -769,6 +878,10 @@ function checkOrb() {
   if (horizontalDistance(player.root.position, orb.position) > 1.6 || player.root.position.y > 2.8) return;
   state.orbCollected = true;
   orb.visible = false;
+  state.sweeperAlertLevel = "calm";
+  sweepers.forEach((sweeper) => {
+    if (sweeper.userData.marker) sweeper.userData.marker.visible = false;
+  });
   setStatus("Cyber orb collected");
 }
 
@@ -839,7 +952,7 @@ function updateMovement(delta) {
 }
 
 function resolveSweeperCollision(previousX, previousZ) {
-  if (state.world !== "courtyard" || state.flying) return;
+  if (state.world !== "courtyard" || state.flying || state.sweeperAlertLevel !== "alert") return;
   for (const sweeper of sweepers) {
     if (player.root.position.y > 0.86) continue;
     const distance = horizontalDistance(player.root.position, sweeper.position);

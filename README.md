@@ -10,7 +10,7 @@ A browser-based courtyard walking demo with keyboard controls, hold-to-walk mous
 - Space: jump
 - Shift: run
 - E: interact
-- Find the cyber orb: jump over or walk around the robot sweepers guarding it
+- Find the cyber orb: sweepers free-roam until one spots you, then all rush to block you
 - Type cheat: unlock flying
 - Double-tap Space after cheat: toggle flying
 - While flying: hold Space to go up, hold Shift to go down
